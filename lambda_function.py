@@ -7,7 +7,7 @@ from __future__ import print_function
 # http://aws.amazon.com/apache2.0/
 # or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 
-import json
+import sys
 import boto3
 import base64
 import pg8000
@@ -315,4 +315,4 @@ def lambda_handler(event, context):
     return 'Finished'
 
 if __name__ == "__main__":
-    event_handler(sys.argv[0], None)
+    lambda_handler(sys.argv[0], None)
