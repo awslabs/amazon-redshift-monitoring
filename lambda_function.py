@@ -141,6 +141,11 @@ def lambda_handler(event, context):
     if queries_traffic == None:
     	queries_traffic = 0
 
+    run_command(cursor,"select /* Lambda CloudWatch Exporter */ count(event) from stl_connection_log where event = 'initiating session' and username != 'rdsdb' and pid not in (select pid from stl_connection_log where event = 'disconnecting session')")
+    db_connections = cursor.fetchone()[0]
+    if db_connections == None:
+    	db_connections = 0
+
     if debug:
         print("Publishing CloudWatch Metrics")
         
@@ -316,6 +321,15 @@ def lambda_handler(event, context):
 	    		],
 	    		'Timestamp': datetime.datetime.now(),
 	    		'Value': queries_traffic,
+	    		'Unit': 'Count'
+	    	},
+	    	{
+	    		'MetricName': 'DbConnections',
+	    		'Dimensions': [
+	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
+	    		],
+	    		'Timestamp': datetime.datetime.now(),
+	    		'Value': db_connections,
 	    		'Unit': 'Count'
 	    	}
     	]
