@@ -27,8 +27,12 @@ debug = True
 
 ##################
 
-kms = boto3.client('kms')
-password = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))['Plaintext']
+try:
+    kms = boto3.client('kms')
+    password = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))['Plaintext']
+except:
+    print('KMS access failed: exception %s' % sys.exc_info()[1])
+
 cw = boto3.client('cloudwatch')
 
 pg8000.paramstyle = "qmark"
@@ -40,8 +44,14 @@ def run_command(cursor, statement):
     return cursor.execute(statement)
 
 def lambda_handler(event, context):
-    conn = pg8000.connect(database=database, user=user, password=password, host=host, port=port, ssl=ssl)
-    
+    try:
+        if debug:
+            print('Connect to Redshift: %s' % host)
+        conn = pg8000.connect(database=database, user=user, password=password, host=host, port=port, ssl=ssl)
+    except:
+        print('Redshift Connection Failed: exception %s' % sys.exc_info()[1])
+        return 'Failed'
+
     if debug:
         print('Succesfully Connected Redshift Cluster')
     cursor = conn.cursor()
@@ -63,277 +73,280 @@ def lambda_handler(event, context):
     total_rows = 0
     result = cursor.fetchall()
     for table in result:
-    	table_name, encoded, max_varchar, unsorted, stats_off, tbl_rows, skew_sortkey1, skew_rows = table
-    	number_tables += 1
-    	if encoded == 'N':
-    		tables_not_compressed += 1
-    	if skew_rows != None:
-    		if skew_rows > max_skew_ratio:
-    			max_skew_ratio = skew_rows
-    		total_skew_ratio += skew_rows
-    		number_tables_skew += 1
-    	if skew_sortkey1 != None:
-    		if skew_sortkey1 > max_skew_sort_ratio:
-    			max_skew_sort_ratio = skew_sortkey1
-    		total_skew_sort_ratio += skew_sortkey1
-    		number_tables_skew_sort += 1
-    	if stats_off != None and stats_off > 5:
-    		number_tables_statsoff += 1
-    	if max_varchar != None and max_varchar > max_varchar_size:
-    		max_varchar_size = max_varchar
-    	if unsorted != None and unsorted > max_unsorted_pct:
-    		max_unsorted_pct = unsorted
-    	if tbl_rows != None:
-    		total_rows += tbl_rows
+        table_name, encoded, max_varchar, unsorted, stats_off, tbl_rows, skew_sortkey1, skew_rows = table
+        number_tables += 1
+        if encoded == 'N':
+            tables_not_compressed += 1
+        if skew_rows != None:
+            if skew_rows > max_skew_ratio:
+                max_skew_ratio = skew_rows
+            total_skew_ratio += skew_rows
+            number_tables_skew += 1
+        if skew_sortkey1 != None:
+            if skew_sortkey1 > max_skew_sort_ratio:
+                max_skew_sort_ratio = skew_sortkey1
+            total_skew_sort_ratio += skew_sortkey1
+            number_tables_skew_sort += 1
+        if stats_off != None and stats_off > 5:
+            number_tables_statsoff += 1
+        if max_varchar != None and max_varchar > max_varchar_size:
+            max_varchar_size = max_varchar
+        if unsorted != None and unsorted > max_unsorted_pct:
+            max_unsorted_pct = unsorted
+        if tbl_rows != None:
+            total_rows += tbl_rows
 
     if number_tables_skew > 0:
-    	avg_skew_ratio = total_skew_ratio / number_tables_skew
+        avg_skew_ratio = total_skew_ratio / number_tables_skew
     else:
-    	avg_skew_ratio = 0
+        avg_skew_ratio = 0
 
     if number_tables_skew_sort > 0:
-    	avg_skew_sort_ratio = total_skew_sort_ratio / number_tables_skew_sort
+        avg_skew_sort_ratio = total_skew_sort_ratio / number_tables_skew_sort
     else:
-    	avg_skew_sort_ratio = 0
+        avg_skew_sort_ratio = 0
 
     run_command(cursor,"SELECT /* Lambda CloudWatch Exporter */ count(a.attname) FROM pg_namespace n, pg_class c, pg_attribute a  WHERE n.oid = c.relnamespace AND c.oid = a.attrelid AND a.attnum > 0 AND NOT a.attisdropped and n.nspname NOT IN ('information_schema','pg_catalog','pg_toast') AND format_encoding(a.attencodingtype::integer) = 'none' AND c.relkind='r' AND a.attsortkeyord != 1")
     columns_not_compressed = cursor.fetchone()[0]
     if columns_not_compressed == None:
-    	columns_not_compressed = 0
+        columns_not_compressed = 0
 
     run_command(cursor,"SELECT /* Lambda CloudWatch Exporter */ sum(nvl(s.num_qs,0)) FROM svv_table_info t LEFT JOIN (SELECT tbl, COUNT(distinct query) num_qs FROM stl_scan s WHERE s.userid > 1 AND starttime >= GETDATE() - INTERVAL '%s' GROUP BY tbl) s ON s.tbl = t.table_id WHERE t.sortkey1 IS NULL" % interval)
     queries_scan_no_sort = cursor.fetchone()[0]
     if queries_scan_no_sort == None:
-    	queries_scan_no_sort = 0
+        queries_scan_no_sort = 0
 
     run_command(cursor,"SELECT /* Lambda CloudWatch Exporter */ SUM(w.total_queue_time) / 1000000.0 FROM stl_wlm_query w WHERE w.queue_start_time >= GETDATE() - INTERVAL '%s' AND w.total_queue_time > 0" % interval)
     total_wlm_queue_time = cursor.fetchone()[0]
     if total_wlm_queue_time == None:
-    	total_wlm_queue_time = 0
+        total_wlm_queue_time = 0
 
     run_command(cursor,"SELECT /* Lambda CloudWatch Exporter */ count(distinct query) FROM svl_query_report WHERE is_diskbased='t' AND (LABEL LIKE 'hash%%' OR LABEL LIKE 'sort%%' OR LABEL LIKE 'aggr%%') AND userid > 1 AND start_time >= GETDATE() - INTERVAL '%s'" % interval)
     total_disk_based_queries = cursor.fetchone()[0]
     if total_disk_based_queries == None:
-    	total_disk_based_queries = 0
+        total_disk_based_queries = 0
 
     run_command(cursor,"select /* Lambda CloudWatch Exporter */ avg(datediff(ms,startqueue,startwork)) from stl_commit_stats  where startqueue >= GETDATE() - INTERVAL '%s'" % interval)
     avg_commit_queue = cursor.fetchone()[0]
     if avg_commit_queue == None:
-    	avg_commit_queue = 0
+        avg_commit_queue = 0
 
     run_command(cursor,"select /* Lambda CloudWatch Exporter */ count(distinct l.query) from stl_alert_event_log as l where l.userid >1 and l.event_time >= GETDATE() - INTERVAL '%s'" % interval)
     total_alerts = cursor.fetchone()[0]
     if total_alerts == None:
-    	total_alerts = 0
+        total_alerts = 0
 
     run_command(cursor,"select /* Lambda CloudWatch Exporter */ avg(datediff(ms, starttime, endtime)) from stl_query where starttime >= GETDATE() - INTERVAL '%s'" % interval)
     avg_query_time = cursor.fetchone()[0]
     if avg_query_time == None:
-    	avg_query_time = 0
+        avg_query_time = 0
 
     run_command(cursor,"select /* Lambda CloudWatch Exporter */ sum(packets) from stl_dist where starttime >= GETDATE() - INTERVAL '%s'" % interval)
     total_packets = cursor.fetchone()[0]
     if total_packets == None:
-    	total_packets = 0
+        total_packets = 0
 
     run_command(cursor,"select /* Lambda CloudWatch Exporter */ sum(total) from (select count(query) total from stl_dist where starttime >= GETDATE() - INTERVAL '%s' group by query having sum(packets) > 1000000)" % interval)
     queries_traffic = cursor.fetchone()[0]
     if queries_traffic == None:
-    	queries_traffic = 0
+        queries_traffic = 0
 
     run_command(cursor,"select /* Lambda CloudWatch Exporter */ count(event) from stl_connection_log where event = 'initiating session' and username != 'rdsdb' and pid not in (select pid from stl_connection_log where event = 'disconnecting session')")
     db_connections = cursor.fetchone()[0]
     if db_connections == None:
-    	db_connections = 0
+        db_connections = 0
 
     if debug:
         print("Publishing CloudWatch Metrics")
-        
-    cw.put_metric_data(
-    	Namespace='Redshift',
-    	MetricData=[
-    		{
-	    		'MetricName': 'TablesNotCompressed',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': tables_not_compressed,
-	    		'Unit': 'Count'
-	    	},
-	    	{
-	    		'MetricName': 'ColumnsNotCompressed',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': columns_not_compressed,
-	    		'Unit': 'Count'
-	    	},
-	    	{
-	    		'MetricName': 'MaxSkewRatio',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': max_skew_ratio,
-	    		'Unit': 'None'
-	    	},
-	    	{
-	    		'MetricName': 'AvgSkewRatio',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': avg_skew_ratio,
-	    		'Unit': 'None'
-	    	},
-	    	{
-	    		'MetricName': 'Tables',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': number_tables,
-	    		'Unit': 'Count'
-	    	},
-	    	{
-	    		'MetricName': 'QueriesScanNoSort',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': queries_scan_no_sort,
-	    		'Unit': 'Count'
-	    	},
-	    	{
-	    		'MetricName': 'MaxSkewSortRatio',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': max_skew_sort_ratio,
-	    		'Unit': 'None'
-	    	},
-	    	{
-	    		'MetricName': 'AvgSkewSortRatio',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': avg_skew_sort_ratio,
-	    		'Unit': 'None'
-	    	},
-	    	{
-	    		'MetricName': 'TablesStatsOff',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': number_tables_statsoff,
-	    		'Unit': 'Count'
-	    	},
-	    	{
-	    		'MetricName': 'MaxVarcharSize',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': max_varchar_size,
-	    		'Unit': 'None'
-	    	},
-	    	{
-	    		'MetricName': 'TotalWLMQueueTime',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': total_wlm_queue_time,
-	    		'Unit': 'Seconds'
-	    	},
-	    	{
-	    		'MetricName': 'DiskBasedQueries',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': total_disk_based_queries,
-	    		'Unit': 'Count'
-	    	},
-	    	{
-	    		'MetricName': 'AvgCommitQueueTime',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': avg_commit_queue,
-	    		'Unit': 'Milliseconds'
-	    	},
-	    	{
-	    		'MetricName': 'TotalAlerts',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': total_alerts,
-	    		'Unit': 'Count'
-	    	},
-	    	{
-	    		'MetricName': 'MaxUnsorted',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': max_unsorted_pct,
-	    		'Unit': 'Percent'
-	    	},
-	    	{
-	    		'MetricName': 'Rows',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': total_rows,
-	    		'Unit': 'Count'
-	    	},
-	    	{
-	    		'MetricName': 'AverageQueryTime',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': avg_query_time,
-	    		'Unit': 'Milliseconds'
-	    	},
-	    	{
-	    		'MetricName': 'Packets',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': total_packets,
-	    		'Unit': 'Count'
-	    	},
-	    	{
-	    		'MetricName': 'QueriesWithHighTraffic',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': queries_traffic,
-	    		'Unit': 'Count'
-	    	},
-	    	{
-	    		'MetricName': 'DbConnections',
-	    		'Dimensions': [
-	    			{ 'Name': 'ClusterIdentifier', 'Value': cluster}
-	    		],
-	    		'Timestamp': datetime.datetime.now(),
-	    		'Value': db_connections,
-	    		'Unit': 'Count'
-	    	}
-    	]
-    )
+    
+    try:  
+        cw.put_metric_data(
+            Namespace='Redshift',
+            MetricData=[
+                {
+                    'MetricName': 'TablesNotCompressed',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': tables_not_compressed,
+                    'Unit': 'Count'
+                },
+                {
+                    'MetricName': 'ColumnsNotCompressed',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': columns_not_compressed,
+                    'Unit': 'Count'
+                },
+                {
+                    'MetricName': 'MaxSkewRatio',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': max_skew_ratio,
+                    'Unit': 'None'
+                },
+                {
+                    'MetricName': 'AvgSkewRatio',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': avg_skew_ratio,
+                    'Unit': 'None'
+                },
+                {
+                    'MetricName': 'Tables',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': number_tables,
+                    'Unit': 'Count'
+                },
+                {
+                    'MetricName': 'QueriesScanNoSort',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': queries_scan_no_sort,
+                    'Unit': 'Count'
+                },
+                {
+                    'MetricName': 'MaxSkewSortRatio',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': max_skew_sort_ratio,
+                    'Unit': 'None'
+                },
+                {
+                    'MetricName': 'AvgSkewSortRatio',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': avg_skew_sort_ratio,
+                    'Unit': 'None'
+                },
+                {
+                    'MetricName': 'TablesStatsOff',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': number_tables_statsoff,
+                    'Unit': 'Count'
+                },
+                {
+                    'MetricName': 'MaxVarcharSize',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': max_varchar_size,
+                    'Unit': 'None'
+                },
+                {
+                    'MetricName': 'TotalWLMQueueTime',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': total_wlm_queue_time,
+                    'Unit': 'Seconds'
+                },
+                {
+                    'MetricName': 'DiskBasedQueries',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': total_disk_based_queries,
+                    'Unit': 'Count'
+                },
+                {
+                    'MetricName': 'AvgCommitQueueTime',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': avg_commit_queue,
+                    'Unit': 'Milliseconds'
+                },
+                {
+                    'MetricName': 'TotalAlerts',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': total_alerts,
+                    'Unit': 'Count'
+                },
+                {
+                    'MetricName': 'MaxUnsorted',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': max_unsorted_pct,
+                    'Unit': 'Percent'
+                },
+                {
+                    'MetricName': 'Rows',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': total_rows,
+                    'Unit': 'Count'
+                },
+                {
+                    'MetricName': 'AverageQueryTime',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': avg_query_time,
+                    'Unit': 'Milliseconds'
+                },
+                {
+                    'MetricName': 'Packets',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': total_packets,
+                    'Unit': 'Count'
+                },
+                {
+                    'MetricName': 'QueriesWithHighTraffic',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': queries_traffic,
+                    'Unit': 'Count'
+                },
+                {
+                    'MetricName': 'DbConnections',
+                    'Dimensions': [
+                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                    ],
+                    'Timestamp': datetime.datetime.utcnow(),
+                    'Value': db_connections,
+                    'Unit': 'Count'
+                }
+            ]
+        )
+    except:
+        print('Pushing metrics to CloudWatch failed: exception %s' % sys.exc_info()[1])
 
     cursor.close()
     conn.close()

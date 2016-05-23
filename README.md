@@ -73,7 +73,7 @@ These are the steps you should follow:
   * Role: Use the role created
   * Memory: 256MB
   * Timeout: 5 minutes
-  * VPC: Use the same VPC as the Redshift cluster. You're going to need at least two private subnets with access to the Redshift cluster in its Security Group. You should have a NAT Gateway to give access to Internet to those subnets routing tables. You cannot use public subnets.
+  * VPC: Use the same VPC as the Redshift cluster. You're going to need at least two private subnets with access to the Redshift cluster in its Security Group. You should have a NAT Gateway to give access to Internet to those subnets routing tables. You cannot use public subnets. You can read more information here [AWS blog](https://aws.amazon.com/blogs/aws/new-access-resources-in-a-vpc-from-your-lambda-functions/)
 
 * Add an Event Source to the Lambda function with a Scheduled Event, running with the same frecuency you configured in the Lambda function.
 
