@@ -16,8 +16,6 @@ import pg8000
 import datetime
 import ConfigParser
 
-poll_ts = datetime.datetime.utcnow()
-
 # Configuration
 
 config = ConfigParser.ConfigParser()
@@ -68,6 +66,9 @@ def run_command(cursor, statement):
 
 
 def lambda_handler(event, context):
+    
+    poll_ts = datetime.datetime.utcnow()
+    
     try:
         kms = boto3.client('kms')
         password = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))['Plaintext']
