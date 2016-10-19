@@ -121,7 +121,7 @@ def lambda_handler(event, context):
     if total_wlm_queue_time == None:
         total_wlm_queue_time = 0
 
-    run_command(cursor,"SELECT /* Lambda CloudWatch Exporter */ count(distinct query) FROM svl_query_report WHERE is_diskbased='t' AND (LABEL LIKE 'hash%%' OR LABEL LIKE 'sort%%' OR LABEL LIKE 'aggr%%') AND userid > 1 AND start_time >= GETDATE() - INTERVAL '%s'" % interval)
+    run_command(cursor,"SELECT /* Lambda CloudWatch Exporter */ count(distinct query) FROM svl_query_report WHERE is_diskbased='t' AND (LABEL LIKE 'hash%%' OR LABEL LIKE 'sort%%' OR LABEL LIKE 'aggr%%') AND userid > 1 AND start_time >= GETDATE() - INTERVAL '{0}'".format(interval))
     total_disk_based_queries = cursor.fetchone()[0]
     if total_disk_based_queries == None:
         total_disk_based_queries = 0
