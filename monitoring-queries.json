@@ -1,0 +1,62 @@
+[
+	{
+		"query": "SELECT /* Lambda CloudWatch Exporter */ count(a.attname) FROM pg_namespace n, pg_class c, pg_attribute a  WHERE n.oid = c.relnamespace AND c.oid = a.attrelid AND a.attnum > 0 AND NOT a.attisdropped and n.nspname NOT IN ('information_schema','pg_catalog','pg_toast') AND format_encoding(a.attencodingtype::integer) = 'none' AND c.relkind='r' AND a.attsortkeyord != 1",
+		"name":"ColumnsNotCompressed",
+		"unit":"Count",
+		"type":"value"
+	},
+	{
+		"query": "SELECT /* Lambda CloudWatch Exporter */ sum(nvl(s.num_qs,0)) FROM svv_table_info t LEFT JOIN (SELECT tbl, COUNT(distinct query) num_qs FROM stl_scan s WHERE s.userid > 1 AND starttime >= GETDATE() - INTERVAL '1 hour' GROUP BY tbl) s ON s.tbl = t.table_id WHERE t.sortkey1 IS NULL",
+		"name":"QueriesScanNoSort",
+		"unit":"Count",
+		"type":"value"
+	},
+	{
+		"query": "SELECT /* Lambda CloudWatch Exporter */ SUM(w.total_queue_time) / 1000000.0 FROM stl_wlm_query w WHERE w.queue_start_time >= GETDATE() - INTERVAL '1 hour' AND w.total_queue_time > 0",
+		"name":"TotalWLMQueueTime",
+		"unit":"Seconds",
+		"type":"value"
+	},
+	{
+		"query": "SELECT /* Lambda CloudWatch Exporter */ count(distinct query) FROM svl_query_report WHERE is_diskbased='t' AND (LABEL LIKE 'hash%%' OR LABEL LIKE 'sort%%' OR LABEL LIKE 'aggr%%') AND userid > 1 AND start_time >= GETDATE() - INTERVAL '1 hour'",
+		"name":"DiskBasedQueries",
+		"unit":"Count",
+		"type":"value"
+	},
+	{
+		"query": "select /* Lambda CloudWatch Exporter */ avg(datediff(ms,startqueue,startwork)) from stl_commit_stats  where startqueue >= GETDATE() - INTERVAL '1 hour'",
+		"name":"AvgCommitQueueTime",
+		"unit":"Milliseconds",
+		"type":"value"
+	},
+	{
+		"query": "select /* Lambda CloudWatch Exporter */ count(distinct l.query) from stl_alert_event_log as l where l.userid >1 and l.event_time >= GETDATE() - INTERVAL '1 hour'",
+		"name":"TotalAlerts",
+		"unit":"Seconds",
+		"type":"value"
+	},
+	{
+		"query": "select /* Lambda CloudWatch Exporter */ avg(datediff(ms, starttime, endtime)) from stl_query where starttime >= GETDATE() - INTERVAL '1 hour'",
+		"name":"AverageQueryTime",
+		"unit":"Milliseconds",
+		"type":"value"
+	},
+	{
+		"query": "select /* Lambda CloudWatch Exporter */ sum(packets) from stl_dist where starttime >= GETDATE() - INTERVAL '1 hour'",
+		"name":"Packets",
+		"unit":"Count",
+		"type":"value"
+	},
+	{
+		"query": "select /* Lambda CloudWatch Exporter */ sum(total) from (select count(query) total from stl_dist where starttime >= GETDATE() - INTERVAL '1 hour' group by query having sum(packets) > 1000000)",
+		"name":"QueriesWithHighTraffic",
+		"unit":"Count",
+		"type":"value"
+	},
+	{
+		"query": "select /* Lambda CloudWatch Exporter */ count(event) from stl_connection_log where event = 'initiating session' and username != 'rdsdb' and pid not in (select pid from stl_connection_log where event = 'disconnecting session')",
+		"name":"DbConnections",
+		"unit":"Count",
+		"type":"value"
+	}
+]
