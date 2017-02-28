@@ -304,23 +304,23 @@ def lambda_handler(event, context):
     max_metrics = 20
     group = 0
     print("Publishing %s CloudWatch Metrics" % (len(put_metrics)))
-    for x in range(0, len(put_metrics) + max_metrics, max_metrics):
+    
+    for x in range(0, len(put_metrics), max_metrics):
         group += 1
+
+        # slice the metrics into blocks of 20 or just the remaining metrics
+        put = put_metrics[x:(x + max_metrics)]
         
-        if x < len(put_metrics):
-            # slice the metrics into blocks of 20 or just the remaining metrics
-            put = put_metrics[x:x + (max_metrics)]
-            
-            if debug:
-                print("Metrics group %s: %s Datapoints" % (group, len(put)))
-            
-            try:  
-                cw.put_metric_data(
-                    Namespace='Redshift',
-                    MetricData=put
-                )
-            except:
-                print('Pushing metrics to CloudWatch failed: exception %s' % sys.exc_info()[1])
+        if debug:
+            print("Metrics group %s: %s Datapoints" % (group, len(put)))
+        
+        try:  
+            cw.put_metric_data(
+                Namespace='Redshift',
+                MetricData=put
+            )
+        except:
+            print('Pushing metrics to CloudWatch failed: exception %s' % sys.exc_info()[1])
 
     cursor.close()
     conn.close()
