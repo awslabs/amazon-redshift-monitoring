@@ -19,6 +19,8 @@ import pg8000
 import datetime
 import json
 
+__version__ = "1.2"
+
 #### Configuration
 
 user = 'dbuser'
@@ -29,7 +31,7 @@ database = 'dbname'
 ssl = True
 cluster = 'clustername'
 interval = '1 hour'
-debug = True
+debug = False
 
 ##################
 
@@ -87,16 +89,9 @@ def run_external_commands(command_set_type, file_name, cursor, cluster):
             
         print("Executing %s %s: %s" % (command_set_type, cmd_type, command['name']))
         
-        # wrap the command with a python 2.7 timer
         t = datetime.datetime.now()
-        try:
-            run_command(cursor, command['query'])
-        except Exception as e:
-            print("Exception while running external command. Utility will continue processing...")
-            print(e)
-            
-        value = cursor.fetchone()[0]
-        interval = (datetime.datetime.now() - t).total_seconds() * 1000
+        interval = run_command(cursor, command['query'])
+        value = cursor.fetchone()[0]            
         
         if value == None:
             value = 0
@@ -124,13 +119,41 @@ def run_external_commands(command_set_type, file_name, cursor, cluster):
                                 })
         
     return output_metrics
-        
+    
     
 def run_command(cursor, statement):
     if debug:
         print("Running Statement: %s" % statement)
         
-    return cursor.execute(statement)
+    t = datetime.datetime.now()
+    cursor.execute(statement)
+    interval = (datetime.datetime.now() - t).microseconds / 1000
+    
+    return interval 
+            
+
+def gather_service_class_stats(cursor, cluster):
+    metrics = []
+    poll_ts = datetime.datetime.utcnow()
+    runtime = run_command(cursor, "SELECT service_class, num_queued_queries, num_executing_queries from stv_wlm_service_class_state w WHERE w.service_class >= 6 ORDER BY 1")
+    service_class_info = cursor.fetchall()
+        
+    for service_class in service_class_info:
+        queued_metric = {}
+        queued_metric['MetricName'] = 'ServiceClass%s-Queued' % service_class[0]
+        queued_metric['Dimensions'] = [{'Name': 'ClusterIdentifier', 'Value': cluster}]
+        queued_metric['Timestamp'] = poll_ts
+        queued_metric['Value'] = service_class[1]
+        metrics.append(queued_metric.copy())
+
+        executing_metric = {}
+        executing_metric['MetricName'] = 'ServiceClass%s-Executing' % service_class[0]
+        executing_metric['Dimensions'] = [{'Name': 'ClusterIdentifier', 'Value': cluster}]
+        executing_metric['Timestamp'] = poll_ts
+        executing_metric['Value'] = service_class[2]
+        metrics.append(executing_metric.copy())
+
+    return metrics
 
 
 def gather_table_stats(cursor, cluster):
@@ -295,10 +318,13 @@ def lambda_handler(event, context):
     # collect table statistics
     put_metrics = gather_table_stats(cursor, cluster)
         
+    # collect service class statistics
+    put_metrics.extend(gather_service_class_stats(cursor, cluster))
+    
     # run the externally configured commands and append their values onto the put metrics
     put_metrics.extend(run_external_commands('Redshift Diagnostic', 'monitoring-queries.json', cursor, cluster))
     
-    # run the externally configured commands and append their values onto the put metrics
+    # run the supplied user commands and append their values onto the put metrics
     put_metrics.extend(run_external_commands('User Configured', 'user-queries.json', cursor, cluster))
     
     max_metrics = 20
@@ -313,7 +339,7 @@ def lambda_handler(event, context):
         
         if debug:
             print("Metrics group %s: %s Datapoints" % (group, len(put)))
-        
+            print(put)
         try:  
             cw.put_metric_data(
                 Namespace='Redshift',
