@@ -40,22 +40,22 @@ cw = boto3.client('cloudwatch')
 pg8000.paramstyle = "qmark"
 
 # resolve cluster connection settings from environment if set
-if os.environ['db_user'] != None:
+if os.environ.has_key('db_user'):
     user = os.environ['db_user']
 
-if os.environ['encrypted_password'] != None:
+if os.environ.has_key('encrypted_password'):
     enc_password = os.environ['encrypted_password']
 
-if os.environ['cluster_endpoint'] != None:
+if os.environ.has_key('cluster_endpoint'):
     host = os.environ['cluster_endpoint']
 
-if os.environ['db_port'] != None:
+if os.environ.has_key('db_port'):
     port = int(os.environ['db_port'])
 
-if os.environ['db_name'] != None:
+if os.environ.has_key('db_name'):
     database = os.environ['db_name']
 
-if os.environ['cluster_name'] != None:
+if os.environ.has_key('cluster_name'):
     cluster = os.environ['cluster_name']
 
 try:
