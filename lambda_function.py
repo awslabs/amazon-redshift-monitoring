@@ -12,6 +12,7 @@ import os
 
 # add the lib directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "sql"))
 
 import boto3
 import base64
@@ -19,51 +20,27 @@ import pg8000
 import datetime
 import json
 
-__version__ = "1.2"
+__version__ = "1.3"
 
-#### Configuration
-
-user = 'dbuser'
-enc_password = 'CiC5vxxxxxNg=='
-host = 'endpoint'
-port = 8192
-database = 'dbname'
-ssl = True
-cluster = 'clustername'
-interval = '1 hour'
 debug = False
 
+aws_region = os.environ['AWS_REGION']
+if 'DEBUG' in os.environ:
+    if os.environ['DEBUG'].upper() == 'TRUE':
+        debug = True
+        
+kms = boto3.client('kms', region_name=aws_region)
+cw = boto3.client('cloudwatch', region_name=aws_region
+                  )
+if debug:
+    print("Connected to AWS KMS & CloudWatch in %s" % aws_region)
+
+#### Static Configuration
+ssl = True
+interval = '1 hour'
 ##################
 
-cw = boto3.client('cloudwatch')
-
 pg8000.paramstyle = "qmark"
-
-# resolve cluster connection settings from environment if set
-if os.environ['db_user'] != None:
-    user = os.environ['db_user']
-
-if os.environ['encrypted_password'] != None:
-    enc_password = os.environ['encrypted_password']
-
-if os.environ['cluster_endpoint'] != None:
-    host = os.environ['cluster_endpoint']
-
-if os.environ['db_port'] != None:
-    port = int(os.environ['db_port'])
-
-if os.environ['db_name'] != None:
-    database = os.environ['db_name']
-
-if os.environ['cluster_name'] != None:
-    cluster = os.environ['cluster_name']
-
-try:
-    kms = boto3.client('kms')
-    password = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))['Plaintext']
-except:
-    print('KMS access failed: exception %s' % sys.exc_info()[1])
-    raise
 
 def run_external_commands(command_set_type, file_name, cursor, cluster):
     if not os.path.exists(file_name):
@@ -301,15 +278,49 @@ def gather_table_stats(cursor, cluster):
             }
         ] 
     
-       
+# nasty hack for backward compatiblility, to extract label values from os.environ or event
+def get_config_value(labels, configs):
+    for l in labels:
+        for c in configs:
+            if l in c:
+                if debug:
+                    print ("Resolved label value %s from config" % l)
+                    
+                return c[l]
+    
+    return None
+
+
 def lambda_handler(event, context):
+    # resolve the configuration from the sources required
+    config_sources = [event, os.environ]
+    user = get_config_value(['DbUser', 'db_user'], config_sources)
+    enc_password = get_config_value(['EncryptedPassword', 'encrypted_password' ], config_sources)
+    host = get_config_value(['HostName', 'cluster_endpoint'], config_sources)
+    port = int(get_config_value(['HostPort', 'db_port' ], config_sources))
+    database = get_config_value(['DatabaseName', 'db_name'], config_sources)
+    cluster = get_config_value(['ClusterName', 'cluster_name'], config_sources)
+    global interval
+    interval = get_config_value(['AggregationInterval', 'agg_interval'], config_sources)
+    
+        
+    # decrypt the password
+    try:
+        pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))['Plaintext']
+    except:
+        print('KMS access failed: exception %s' % sys.exc_info()[1])
+        print('Encrypted Password: %s' % enc_password)
+        raise
+        
+    # Connect to the cluster
     try:
         if debug:
             print('Connecting to Redshift: %s' % host)
-        conn = pg8000.connect(database=database, user=user, password=password, host=host, port=port, ssl=ssl)
+        
+        conn = pg8000.connect(database=database, user=user, password=pwd, host=host, port=port, ssl=ssl)
     except:
         print('Redshift Connection Failed: exception %s' % sys.exc_info()[1])
-        return 'Failed'
+        raise
 
     if debug:
         print('Successfully Connected to Cluster')

@@ -10,32 +10,8 @@ Most of the graphs are based on the information provided in this blog article, s
 ## Installation
 To install this utility, you can either use the prebuilt zip in the [dist](dist) folder, or you can build it yourself. We've included a [build script](build.sh) for bash shell that will create a zip file which you can upload into AWS Lambda.
 
-This function is able to monitor a single cluster (today), so you must configure it to connect. To do this, you can either edit the variables at the top of the file:
+### Password Encryption
 
-* user: The user in the database.
-* enc_password: The password encrypted with the KMS key.
-* host: The endpoing dns name of the Redshift cluster.
-* port: The port used by the Redshift cluster.
-* database: Database name of the Redshift cluster.
-* ssl: If you want to use SSL to connect to the cluster.
-* cluster: A cluster name, your graphs in CloudWatch are going to use it to reference the Redshift Cluster.
-* interval: The interval you're going to use to run your lambda function, 1 hour is a recommended interval.
-
-Alternatively, you can now use [Lambda Environment Variables](http://docs.aws.amazon.com/lambda/latest/dg/env_variables.html) for configuration, including:
-
-```
-"Environment": {
-        "Variables": {
-            "encrypted_password": "KMS encrypted password",
-            "db_port": "database part number",
-            "cluster_name": "display name for cloudwatch metrics",
-            "db_name": "database name",
-            "db_user": "database user name",
-            "cluster_endpoint": "cluster DNS name"
-        }
-    }
-```
- 
 The password for the Redshift user *must* be encrypted with KMS, and plaintext passwords are NOT supported. Furthermore, Lambda Environment Variables can also be [encrypted within the Lambda service using KMS](http://docs.aws.amazon.com/lambda/latest/dg/env_variables.html#env_encrypt).
 
 These are the steps you should follow to configure the function:
@@ -77,10 +53,64 @@ These are the steps you should follow to configure the function:
 * Encrypt the password of the user with the KMS key, you can use this command line to do it: 
 >aws kms encrypt --key-id `<kms_key_id>` --plaintext `<password>`
 
+## Configuration 
+
+This function is able to monitor a single cluster (today), so you must configure it to connect. To do this, you have 3 options:
+
+### Static Configuration (Bad - deprecated after v1.2)
+
+You can edit the variables at the top of the script, and rebuild. Please note that anyone who has access to the Lambda function code will also have access to these configuration values. This includes:
+
+* user: The user in the database.
+* enc_password: The password encrypted with the KMS key.
+* host: The endpoing dns name of the Redshift cluster.
+* port: The port used by the Redshift cluster.
+* database: Database name of the Redshift cluster.
+* ssl: If you want to use SSL to connect to the cluster.
+* cluster: A cluster name, your graphs in CloudWatch are going to use it to reference the Redshift Cluster.
+* interval: The interval you're going to use to run your lambda function, 1 hour is a recommended interval.
+
+### Environment Variables (Better)
+
+Alternatively, you can now use [Lambda Environment Variables](http://docs.aws.amazon.com/lambda/latest/dg/env_variables.html) for configuration, including:
+
+```
+"Environment": {
+        "Variables": {
+            "encrypted_password": "KMS encrypted password",
+            "db_port": "database part number",
+            "cluster_name": "display name for cloudwatch metrics",
+            "db_name": "database name",
+            "db_user": "database user name",
+            "cluster_endpoint": "cluster DNS name"
+        }
+    }
+```
+
+### Configuring with Events (Best)
+
+This option allows you to send the configuration as part of the Scheduled Event, which then means you can support multiple clusters from a single Lambda function. This option will override any Environment variables that you've configured. An example event looks like:
+
+```
+{
+  "DbUser": "master",
+  "EncryptedPassword": "AQECAHh+YtzV/K7+L/VDT7h2rYDCWFSUugXGqMxzWGXynPCHpQAAAGkwZwYJKoZIhvcNAQcGoFowWAIBADBTBgkqhkiG9w0BBwEwHgYJYIZIAWUDBAEuMBEEDM8DWMFELclZ2s7cmwIBEIAmyVGjoB7F4HbwU5Y1lq7GVQ3UU3MaE10LWieCKMHOtVhJioi+IHw=",
+  "ClusterName": "energy-demo",
+  "HostName": "energy-demo.c7bpmf3ajaft.eu-west-1.redshift.amazonaws.com",
+  "HostPort": "5439",
+  "DatabaseName": "master",
+  "AggregationInterval": "1 hour"
+}
+```
+
+The old environment variable names are provided for backward compatibility, but you can use environment variables with the above names, and it will use those instead. 
+ 
+## Deploying the function
+
 * If you are rebuilding the function, download and install dependencies
 >pip install -r requirements.txt -t .
 
-* Compress the Lambda function package:
+* Assemble and compress the Lambda function package:
 >./build.sh
 
 * Create a lambda function, some of the parameters of the function are:
@@ -94,12 +124,14 @@ These are the steps you should follow to configure the function:
 
 * Add an Event Source to the Lambda function with a Scheduled Event, running with the same frequency you configured in the Lambda function.
 
+## Confirming Successful Execution
+
 * After a period of time, you can check your CloudWatch metrics, and create alarms. You can also create a Dashboard with all the graphs and have a view of your database as this one:
 
 ![Dashboard1](https://s3-eu-west-1.amazonaws.com/amzsup/dashboard1.png)
 ![Dashboard2](https://s3-eu-west-1.amazonaws.com/amzsup/dashboard2.png)
 
-## Extensions
+# Extensions
 
 The published CloudWatch metrics are all configured in a JSON file called `monitoring-queries.json`. These are queries that have been built by the AWS Redshift database engineering and support teams and which provide detailed metrics about the operation of your cluster.
 
