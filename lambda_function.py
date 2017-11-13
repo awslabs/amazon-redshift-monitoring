@@ -66,34 +66,38 @@ def run_external_commands(command_set_type, file_name, cursor, cluster):
             
         print("Executing %s %s: %s" % (command_set_type, cmd_type, command['name']))
         
-        t = datetime.datetime.now()
-        interval = run_command(cursor, command['query'])
-        value = cursor.fetchone()[0]            
-        
-        if value == None:
-            value = 0
-        
-        # append a cloudwatch metric for the value, or the elapsed interval, based upon the configured 'type' value
-        if command['type'] == 'value':
-            output_metrics.append({
-                                    'MetricName': command['name'],
-                                    'Dimensions': [
-                                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
-                                    ],
-                                    'Timestamp': t,
-                                    'Value': value,
-                                    'Unit': command['unit']
-                                })
-        else:
-            output_metrics.append({
-                                    'MetricName': command['name'],
-                                    'Dimensions': [
-                                        { 'Name': 'ClusterIdentifier', 'Value': cluster}
-                                    ],
-                                    'Timestamp': t,
-                                    'Value': interval,
-                                    'Unit': 'Milliseconds'
-                                })
+        try:
+            t = datetime.datetime.now()
+            interval = run_command(cursor, command['query'])
+            value = cursor.fetchone()[0]            
+            
+            if value == None:
+                value = 0
+            
+            # append a cloudwatch metric for the value, or the elapsed interval, based upon the configured 'type' value
+            if command['type'] == 'value':
+                output_metrics.append({
+                                        'MetricName': command['name'],
+                                        'Dimensions': [
+                                            { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                                        ],
+                                        'Timestamp': t,
+                                        'Value': value,
+                                        'Unit': command['unit']
+                                    })
+            else:
+                output_metrics.append({
+                                        'MetricName': command['name'],
+                                        'Dimensions': [
+                                            { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                                        ],
+                                        'Timestamp': t,
+                                        'Value': interval,
+                                        'Unit': 'Milliseconds'
+                                    })
+        except e:
+            print("Exception running external command %s" % command['name'])
+            print(e)
         
     return output_metrics
     
