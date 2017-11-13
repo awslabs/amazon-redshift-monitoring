@@ -113,6 +113,12 @@ The old environment variable names are provided for backward compatibility, but 
 * Assemble and compress the Lambda function package:
 >./build.sh
 
+If you are including any user defined query extensions, then build with:
+
+>./build.sh --include-user-queries
+
+Please note the labelled version in Github does not include any user queries
+
 * Create a lambda function, some of the parameters of the function are:
   * Runtime: Python 2.7
   * Upload the zip file generated
