@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Parameters:
+  ClusterName:
+    Default: my-redshift-cluster
+    Description: Cluster Name
+    Type: String
+    AllowedPattern: .*
+  DbUser:
+    Default: My DB User
+    Description: Name of the database user to connect to
+    Type: String
+    AllowedPattern: .*
+  EncryptedPassword:
+    Default: Base64 Encoded Encrypted Password
+    Description: Password encrypted with AWS KMS
+    Type: String
+    AllowedPattern: .*
+  HostName:
+    Default: my-redshift-cluster.XXXXXXXXXXXX.<region>.redshift.amazonaws.com
+    Description: Cluster Endpoint Address
+    Type: String
+    AllowedPattern: .*\.redshift\.amazonaws\.com$
+  HostPort:
+    Default: 5439
+    Description: Database Port
+    Type: Number
+    MinValue: 1024
+    MaxValue: 65535
+  DatabaseName:
+    Default: mydb
+    Description: Database Name to connect to
+    Type: String
+    AllowedPattern: .*
+  AggregationInterval:
+    Default: 1 hour
+    Description: Interval for aggregating statistics
+    Type: String
+    AllowedValues:
+      - 1 hour
+      - 10 minutes
+Resources:
+  ScheduledFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda_function.lambda_handler
+      Runtime: python2.7
+      CodeUri:         
+        Bucket: !Sub awslabs-code-${AWS::Region}
+        Key: RedshiftAdvancedMonitoring/redshift-advanced-monitoring-1.3.zip
+      MemorySize: 192
+      Timeout: 300
+      Tags:
+        Name: RedshiftAdvancedMonitoring
+      Role: !GetAtt ScheduledServiceIAMRole.Arn
+      Events:
+        Timer:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 hour)
+            Input: 
+              !Sub | 
+                {
+                  "DbUser":"${DbUser}",
+                  "EncryptedPassword":"${EncryptedPassword}",
+                  "ClusterName":"${ClusterName}",
+                  "HostName":"${HostName}",
+                  "HostPort":"${HostPort}",
+                  "DatabaseName":"${DatabaseName}",
+                  "AggregationInterval":"${AggregationInterval}"
+                }
+  ScheduledServiceIAMRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+        RoleName: "LambdaRedshiftMonitoringRole"
+        Path: "/"
+        ManagedPolicyArns:
+            - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            -
+              Sid: "AllowLambdaServiceToAssumeRole"
+              Effect: "Allow"
+              Action:
+                - "sts:AssumeRole"
+              Principal:
+                Service:
+                  - "lambda.amazonaws.com"
+        Policies:
+          -
+            PolicyName: "LambdaRedshiftMonitoringPolicy"
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                -
+                  Effect: "Allow"
+                  Action:
+                    - "cloudwatch:PutMetricData"                    
+                    - "kms:Decrypt"
+                  Resource: "*"
