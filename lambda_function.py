@@ -20,26 +20,13 @@ import pg8000
 import datetime
 import json
 
-__version__ = "1.3"
-
-debug = False
-
-aws_region = os.environ['AWS_REGION']
-if 'DEBUG' in os.environ:
-    if os.environ['DEBUG'].upper() == 'TRUE':
-        debug = True
-        
-kms = boto3.client('kms', region_name=aws_region)
-cw = boto3.client('cloudwatch', region_name=aws_region
-                  )
-if debug:
-    print("Connected to AWS KMS & CloudWatch in %s" % aws_region)
-
 #### Static Configuration
 ssl = True
 interval = '1 hour'
 ##################
 
+__version__ = "1.4"
+debug = False
 pg8000.paramstyle = "qmark"
 
 def run_external_commands(command_set_type, file_name, cursor, cluster):
@@ -295,19 +282,29 @@ def get_config_value(labels, configs):
     return None
 
 
-def lambda_handler(event, context):
-    # resolve the configuration from the sources required
-    config_sources = [event, os.environ]
-    user = get_config_value(['DbUser', 'db_user'], config_sources)
-    enc_password = get_config_value(['EncryptedPassword', 'encrypted_password' ], config_sources)
-    host = get_config_value(['HostName', 'cluster_endpoint'], config_sources)
-    port = int(get_config_value(['HostPort', 'db_port' ], config_sources))
-    database = get_config_value(['DatabaseName', 'db_name'], config_sources)
-    cluster = get_config_value(['ClusterName', 'cluster_name'], config_sources)
+def monitor_cluster(config_sources):
+    aws_region = get_config_value(['AWS_REGION'],config_sources)
+
+    if 'DEBUG' in os.environ:
+        if os.environ['DEBUG'].upper() == 'TRUE':
+            global debug
+            debug = True
+
+    kms = boto3.client('kms', region_name=aws_region)
+    cw = boto3.client('cloudwatch', region_name=aws_region)
+
+    if debug:
+        print("Connected to AWS KMS & CloudWatch in %s" % aws_region)
+
+    user = get_config_value(['DbUser', 'db_user', 'dbUser'], config_sources)
+    enc_password = get_config_value(['EncryptedPassword', 'encrypted_password','dbPassword'], config_sources)
+    host = get_config_value(['HostName', 'cluster_endpoint','dbHost'], config_sources)
+    port = int(get_config_value(['HostPort', 'db_port','dbPort'], config_sources))
+    database = get_config_value(['DatabaseName', 'db_name','db'], config_sources)
+    cluster = get_config_value(['ClusterName', 'cluster_name', 'clusterName'], config_sources)
     global interval
-    interval = get_config_value(['AggregationInterval', 'agg_interval'], config_sources)
-    
-        
+    interval = get_config_value(['AggregationInterval', 'agg_interval', 'aggregtionInterval'], config_sources)
+
     # decrypt the password
     try:
         pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))['Plaintext']
@@ -315,12 +312,12 @@ def lambda_handler(event, context):
         print('KMS access failed: exception %s' % sys.exc_info()[1])
         print('Encrypted Password: %s' % enc_password)
         raise
-        
+
     # Connect to the cluster
     try:
         if debug:
             print('Connecting to Redshift: %s' % host)
-        
+
         conn = pg8000.connect(database=database, user=user, password=pwd, host=host, port=port, ssl=ssl)
     except:
         print('Redshift Connection Failed: exception %s' % sys.exc_info()[1])
@@ -328,34 +325,47 @@ def lambda_handler(event, context):
 
     if debug:
         print('Successfully Connected to Cluster')
+
+    # create a new cursor for methods to run through
     cursor = conn.cursor()
 
     # collect table statistics
     put_metrics = gather_table_stats(cursor, cluster)
-        
+
     # collect service class statistics
     put_metrics.extend(gather_service_class_stats(cursor, cluster))
-    
+
     # run the externally configured commands and append their values onto the put metrics
     put_metrics.extend(run_external_commands('Redshift Diagnostic', 'monitoring-queries.json', cursor, cluster))
-    
+
     # run the supplied user commands and append their values onto the put metrics
     put_metrics.extend(run_external_commands('User Configured', 'user-queries.json', cursor, cluster))
-    
+
+    # add a metric for how many metrics we're exporting (whoa inception)
+    put_metrics.extend([{
+                'MetricName': 'CloudwatchMetricsExported',
+                'Dimensions': [
+                    { 'Name': 'ClusterIdentifier', 'Value': cluster}
+                ],
+                'Timestamp': datetime.datetime.utcnow(),
+                'Value': len(put_metrics),
+                'Unit': 'Count'
+            }])
+
     max_metrics = 20
     group = 0
     print("Publishing %s CloudWatch Metrics" % (len(put_metrics)))
-    
+
     for x in range(0, len(put_metrics), max_metrics):
         group += 1
 
         # slice the metrics into blocks of 20 or just the remaining metrics
         put = put_metrics[x:(x + max_metrics)]
-        
+
         if debug:
             print("Metrics group %s: %s Datapoints" % (group, len(put)))
             print(put)
-        try:  
+        try:
             cw.put_metric_data(
                 Namespace='Redshift',
                 MetricData=put
@@ -365,6 +375,12 @@ def lambda_handler(event, context):
 
     cursor.close()
     conn.close()
+
+
+def lambda_handler(event, context):
+    # resolve the configuration from the sources required
+    config_sources = [event, os.environ]
+    monitor_cluster(config_sources)
     return 'Finished'
 
 if __name__ == "__main__":
