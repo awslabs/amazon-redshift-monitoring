@@ -20,7 +20,7 @@ if [ -f dist/$ARCHIVE ]; then
 	rm -Rf dist/$ARCHIVE
 fi
 
-cmd="zip -r dist/$ARCHIVE lambda_function.py monitoring-queries.json lib/"
+cmd="zip -r dist/$ARCHIVE lambda_function.py redshift_monitoring.py monitoring-queries.json lib/"
 
 if [ "$1" == "--include-user-queries" ]; then
 	cmd="$cmd user-queries.json" 
