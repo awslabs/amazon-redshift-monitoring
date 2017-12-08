@@ -314,6 +314,10 @@ def monitor_cluster(config_sources):
     cluster = get_config_value(['ClusterName', 'cluster_name', 'clusterName'], config_sources)
     global interval
     interval = get_config_value(['AggregationInterval', 'agg_interval', 'aggregtionInterval'], config_sources)
+    set_debug = get_config_value(['debug','DEBUG'], config_sources)
+    if set_debug is not None:
+        global debug
+        debug = set_debug
 
     # decrypt the password
     auth_context = None
