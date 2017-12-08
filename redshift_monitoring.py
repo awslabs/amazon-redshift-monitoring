@@ -284,13 +284,20 @@ def get_config_value(labels, configs):
     return None
 
 
+def get_encryption_context(cmk, region):
+    authContext = {}
+    authContext["module"] = cmk
+    authContext["region"] = region
+
+    return authContext
+
+
 def monitor_cluster(config_sources):
     aws_region = get_config_value(['AWS_REGION'], config_sources)
 
-    if 'DEBUG' in os.environ:
-        if os.environ['DEBUG'].upper() == 'TRUE':
-            global debug
-            debug = True
+    if get_config_value(['DEBUG', 'debug', ], config_sources).upper() == 'TRUE':
+        global debug
+        debug = True
 
     kms = boto3.client('kms', region_name=aws_region)
     cw = boto3.client('cloudwatch', region_name=aws_region)
@@ -300,6 +307,7 @@ def monitor_cluster(config_sources):
 
     user = get_config_value(['DbUser', 'db_user', 'dbUser'], config_sources)
     enc_password = get_config_value(['EncryptedPassword', 'encrypted_password', 'dbPassword'], config_sources)
+    cmk_alias = get_config_value(['cmkAlias'], config_sources)
     host = get_config_value(['HostName', 'cluster_endpoint', 'dbHost'], config_sources)
     port = int(get_config_value(['HostPort', 'db_port', 'dbPort'], config_sources))
     database = get_config_value(['DatabaseName', 'db_name', 'db'], config_sources)
@@ -308,11 +316,21 @@ def monitor_cluster(config_sources):
     interval = get_config_value(['AggregationInterval', 'agg_interval', 'aggregtionInterval'], config_sources)
 
     # decrypt the password
+    auth_context = None
+    if cmk_alias is not None:
+        auth_context = get_encryption_context(cmk_alias, aws_region)
+
     try:
-        pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))['Plaintext']
+        if auth_context is None:
+            pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))[
+                'Plaintext']
+        else:
+            pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password), EncryptionContext=auth_context)[
+                'Plaintext']
     except:
         print('KMS access failed: exception %s' % sys.exc_info()[1])
         print('Encrypted Password: %s' % enc_password)
+        print('Encryption Context %s' % auth_context)
         raise
 
     # Connect to the cluster
