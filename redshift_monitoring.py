@@ -295,10 +295,6 @@ def get_encryption_context(cmk, region):
 def monitor_cluster(config_sources):
     aws_region = get_config_value(['AWS_REGION'], config_sources)
 
-    if get_config_value(['DEBUG', 'debug', ], config_sources).upper() == 'TRUE':
-        global debug
-        debug = True
-
     kms = boto3.client('kms', region_name=aws_region)
     cw = boto3.client('cloudwatch', region_name=aws_region)
 
@@ -317,7 +313,10 @@ def monitor_cluster(config_sources):
     set_debug = get_config_value(['debug','DEBUG'], config_sources)
     if set_debug is not None:
         global debug
-        debug = set_debug
+        if get_config_value(['DEBUG', 'debug', ], config_sources).upper() == 'TRUE':
+            debug = True
+        else:
+            debug = False
 
     # decrypt the password
     auth_context = None
