@@ -295,7 +295,7 @@ def get_encryption_context(cmk, region):
 def monitor_cluster(config_sources):
     aws_region = get_config_value(['AWS_REGION'], config_sources)
 
-    if get_config_value(['DEBUG', 'debug', ], config_sources).upper() == 'TRUE':
+    if str(get_config_value(['DEBUG', 'debug', ], config_sources)).upper() == 'TRUE':
         global debug
         debug = True
 
@@ -314,10 +314,7 @@ def monitor_cluster(config_sources):
     cluster = get_config_value(['ClusterName', 'cluster_name', 'clusterName'], config_sources)
     global interval
     interval = get_config_value(['AggregationInterval', 'agg_interval', 'aggregtionInterval'], config_sources)
-    set_debug = get_config_value(['debug','DEBUG'], config_sources)
-    if set_debug is not None:
-        global debug
-        debug = set_debug
+
 
     # decrypt the password
     auth_context = None
