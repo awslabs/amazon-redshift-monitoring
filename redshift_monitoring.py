@@ -1,12 +1,12 @@
 from __future__ import print_function
 
+import os
+import sys
+
 # Copyright 2016-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
 # http://aws.amazon.com/apache2.0/
 # or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-
-import sys
-import os
 
 # add the lib directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
@@ -306,15 +306,16 @@ def monitor_cluster(config_sources):
         print("Connected to AWS KMS & CloudWatch in %s" % aws_region)
 
     user = get_config_value(['DbUser', 'db_user', 'dbUser'], config_sources)
-    enc_password = get_config_value(['EncryptedPassword', 'encrypted_password', 'dbPassword'], config_sources)
-    cmk_alias = get_config_value(['cmkAlias'], config_sources)
-    host = get_config_value(['HostName', 'cluster_endpoint', 'dbHost'], config_sources)
+    enc_password = get_config_value(['EncryptedPassword', 'encrypted_password', 'encrypted_pwd', 'dbPassword'],
+                                    config_sources)
+    cmk_alias = get_config_value(['cmkAlias', 'cmk_alias'], config_sources)
+    host = get_config_value(['HostName', 'cluster_endpoint', 'dbHost', 'db_host'], config_sources)
     port = int(get_config_value(['HostPort', 'db_port', 'dbPort'], config_sources))
     database = get_config_value(['DatabaseName', 'db_name', 'db'], config_sources)
     cluster = get_config_value(['ClusterName', 'cluster_name', 'clusterName'], config_sources)
     global interval
     interval = get_config_value(['AggregationInterval', 'agg_interval', 'aggregtionInterval'], config_sources)
-    set_debug = get_config_value(['debug','DEBUG'], config_sources)
+    set_debug = get_config_value(['debug', 'DEBUG'], config_sources)
     if set_debug is not None:
         global debug
         debug = set_debug
