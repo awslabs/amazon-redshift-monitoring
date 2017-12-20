@@ -354,6 +354,14 @@ def monitor_cluster(config_sources):
     # create a new cursor for methods to run through
     cursor = conn.cursor()
 
+    # set application name
+    set_name = "set application_name to 'RedshiftAdvancedMonitoring-v%s'" % __version__
+
+    if debug:
+        print(set_name)
+
+    cursor.execute(set_name)
+
     # collect table statistics
     put_metrics = gather_table_stats(cursor, cluster)
 
@@ -397,6 +405,7 @@ def monitor_cluster(config_sources):
             )
         except:
             print('Pushing metrics to CloudWatch failed: exception %s' % sys.exc_info()[1])
+            raise
 
     cursor.close()
     conn.close()
