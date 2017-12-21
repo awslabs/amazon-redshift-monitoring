@@ -81,7 +81,7 @@ def run_external_commands(command_set_type, file_name, cursor, cluster):
                     'Value': interval,
                     'Unit': 'Milliseconds'
                 })
-        except e:
+        except Exception as e:
             print("Exception running external command %s" % command['name'])
             print(e)
 
