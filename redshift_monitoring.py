@@ -57,7 +57,7 @@ def run_external_commands(command_set_type, file_name, cursor, cluster):
             interval = run_command(cursor, command['query'])
             value = cursor.fetchone()[0]
 
-            if value == None:
+            if value is None:
                 value = 0
 
             # append a cloudwatch metric for the value, or the elapsed interval, based upon the configured 'type' value
@@ -147,23 +147,23 @@ def gather_table_stats(cursor, cluster):
         number_tables += 1
         if encoded == 'N':
             tables_not_compressed += 1
-        if skew_rows != None:
+        if skew_rows is not None:
             if skew_rows > max_skew_ratio:
                 max_skew_ratio = skew_rows
             total_skew_ratio += skew_rows
             number_tables_skew += 1
-        if skew_sortkey1 != None:
+        if skew_sortkey1 is not None:
             if skew_sortkey1 > max_skew_sort_ratio:
                 max_skew_sort_ratio = skew_sortkey1
             total_skew_sort_ratio += skew_sortkey1
             number_tables_skew_sort += 1
-        if stats_off != None and stats_off > 5:
+        if stats_off is not None and stats_off > 5:
             number_tables_statsoff += 1
-        if max_varchar != None and max_varchar > max_varchar_size:
+        if max_varchar is not None and max_varchar > max_varchar_size:
             max_varchar_size = max_varchar
-        if unsorted != None and unsorted > max_unsorted_pct:
+        if unsorted is not None and unsorted > max_unsorted_pct:
             max_unsorted_pct = unsorted
-        if tbl_rows != None:
+        if tbl_rows is not None:
             total_rows += tbl_rows
 
     if number_tables_skew > 0:
@@ -271,7 +271,7 @@ def gather_table_stats(cursor, cluster):
     ]
 
 
-# nasty hack for backward compatiblility, to extract label values from os.environ or event
+# nasty hack for backward compatibility, to extract label values from os.environ or event
 def get_config_value(labels, configs):
     for l in labels:
         for c in configs:
@@ -284,18 +284,11 @@ def get_config_value(labels, configs):
     return None
 
 
-def get_encryption_context(cmk, region):
-    authContext = {}
-    authContext["module"] = cmk
-    authContext["region"] = region
-
-    return authContext
-
-
 def monitor_cluster(config_sources):
     aws_region = get_config_value(['AWS_REGION'], config_sources)
 
-    if get_config_value(['DEBUG', 'debug', ], config_sources).upper() == 'TRUE':
+    set_debug = get_config_value(['DEBUG', 'debug', ], config_sources)
+    if set_debug is not None and set_debug.upper() == 'TRUE':
         global debug
         debug = True
 
@@ -306,9 +299,6 @@ def monitor_cluster(config_sources):
         print("Connected to AWS KMS & CloudWatch in %s" % aws_region)
 
     user = get_config_value(['DbUser', 'db_user', 'dbUser'], config_sources)
-    enc_password = get_config_value(['EncryptedPassword', 'encrypted_password', 'encrypted_pwd', 'dbPassword'],
-                                    config_sources)
-    cmk_alias = get_config_value(['cmkAlias', 'cmk_alias'], config_sources)
     host = get_config_value(['HostName', 'cluster_endpoint', 'dbHost', 'db_host'], config_sources)
     port = int(get_config_value(['HostPort', 'db_port', 'dbPort'], config_sources))
     database = get_config_value(['DatabaseName', 'db_name', 'db'], config_sources)
@@ -320,23 +310,30 @@ def monitor_cluster(config_sources):
         global debug
         debug = set_debug
 
-    # decrypt the password
-    auth_context = None
-    if cmk_alias is not None:
-        auth_context = get_encryption_context(cmk_alias, aws_region)
+    # we may have been passed the password in the configuration, so extract it if we can
+    pwd = get_config_value(['db_pwd'], config_sources)
 
-    try:
-        if auth_context is None:
-            pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))[
-                'Plaintext']
-        else:
-            pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password), EncryptionContext=auth_context)[
-                'Plaintext']
-    except:
-        print('KMS access failed: exception %s' % sys.exc_info()[1])
-        print('Encrypted Password: %s' % enc_password)
-        print('Encryption Context %s' % auth_context)
-        raise
+    if pwd is None:
+        enc_password = get_config_value(['EncryptedPassword', 'encrypted_password', 'encrypted_pwd', 'dbPassword'],
+                                        config_sources)
+        # resolve the authorisation context, if there is one, and decrypt the password
+        auth_context = get_config_value('kms_auth_context', config_sources)
+
+        if auth_context is not None:
+            auth_context = json.loads(auth_context)
+
+        try:
+            if auth_context is None:
+                pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))[
+                    'Plaintext']
+            else:
+                pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password), EncryptionContext=auth_context)[
+                    'Plaintext']
+        except:
+            print('KMS access failed: exception %s' % sys.exc_info()[1])
+            print('Encrypted Password: %s' % enc_password)
+            print('Encryption Context %s' % auth_context)
+            raise
 
     # Connect to the cluster
     try:
