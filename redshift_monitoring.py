@@ -103,23 +103,24 @@ def gather_service_class_stats(cursor, cluster):
     metrics = []
     poll_ts = datetime.datetime.utcnow()
     runtime = run_command(cursor,
-                          "SELECT service_class, num_queued_queries, num_executing_queries from stv_wlm_service_class_state w WHERE w.service_class >= 6 ORDER BY 1")
+                          '''SELECT v.name, w.num_queued_queries, w.num_executing_queries 
+                             from stv_wlm_service_class_state w, STV_WLM_SERVICE_CLASS_CONFIG v 
+                             WHERE w.service_class = v.service_class 
+                             and w.service_class > 5''')
     service_class_info = cursor.fetchall()
 
-    for service_class in service_class_info:
-        queued_metric = {}
-        queued_metric['MetricName'] = 'ServiceClass%s-Queued' % service_class[0]
-        queued_metric['Dimensions'] = [{'Name': 'ClusterIdentifier', 'Value': cluster}]
-        queued_metric['Timestamp'] = poll_ts
-        queued_metric['Value'] = service_class[1]
-        metrics.append(queued_metric.copy())
+    def add_metric(metric_name, service_class_id, metric_value):
+        metrics.append({
+            'MetricName': metric_name,
+            'Dimensions': [{'Name': 'ClusterIdentifier', 'Value': cluster},
+                           {'Name': 'ServiceClassID', 'Value': str(service_class_id)}],
+            'Timestamp': poll_ts,
+            'Value': metric_value
+        })
 
-        executing_metric = {}
-        executing_metric['MetricName'] = 'ServiceClass%s-Executing' % service_class[0]
-        executing_metric['Dimensions'] = [{'Name': 'ClusterIdentifier', 'Value': cluster}]
-        executing_metric['Timestamp'] = poll_ts
-        executing_metric['Value'] = service_class[2]
-        metrics.append(executing_metric.copy())
+    for service_class in service_class_info:
+        add_metric('ServiceClass-Queued',service_class[0],service_class[1])
+        add_metric('ServiceClass-Executing', service_class[0], service_class[2])
 
     return metrics
 
