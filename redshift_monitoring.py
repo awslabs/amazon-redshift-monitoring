@@ -1,12 +1,12 @@
 from __future__ import print_function
 
-import os
-import sys
-
 # Copyright 2016-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
 # http://aws.amazon.com/apache2.0/
 # or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+import os
+import sys
 
 # add the lib directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
@@ -103,7 +103,7 @@ def gather_service_class_stats(cursor, cluster):
     metrics = []
     poll_ts = datetime.datetime.utcnow()
     runtime = run_command(cursor,
-                          '''SELECT trim(v.name) name, w.num_queued_queries, w.num_executing_queries 
+                          '''SELECT /* Lambda CloudWatch Exporter */ trim(v.name) name, w.num_queued_queries, w.num_executing_queries 
                              from stv_wlm_service_class_state w, STV_WLM_SERVICE_CLASS_CONFIG v 
                              WHERE w.service_class = v.service_class 
                              and w.service_class > 5''')

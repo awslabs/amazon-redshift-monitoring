@@ -84,9 +84,16 @@
 	},
 
 	{
-		"query": "select case when count(*) > 0 then 1 else 0 end from svv_transactions where xid = (select max(xid) from stl_vacuum);",
+		"query": "select case when count(*) > 0 then 1 else 0 end from svv_transactions where xid = (select max(xid) from stl_vacuum)",
 		"name": "VacuumRunning",
 		"unit": "Count",
+		"type": "value"
+	},
+
+	{
+		"query": "select case when total_query_slots > 15 then 1 else 0 end status from (select sum(num_query_tasks) total_query_slots from STV_WLM_SERVICE_CLASS_CONFIG where service_class > 5 and name != 'Short query queue')",
+		"name": "WLMQuerySlotCountWarning",
+		"unit": "None",
 		"type": "value"
 	}
 ]
