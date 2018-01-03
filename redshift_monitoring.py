@@ -103,7 +103,7 @@ def gather_service_class_stats(cursor, cluster):
     metrics = []
     poll_ts = datetime.datetime.utcnow()
     runtime = run_command(cursor,
-                          '''SELECT v.name, w.num_queued_queries, w.num_executing_queries 
+                          '''SELECT trim(v.name) name, w.num_queued_queries, w.num_executing_queries 
                              from stv_wlm_service_class_state w, STV_WLM_SERVICE_CLASS_CONFIG v 
                              WHERE w.service_class = v.service_class 
                              and w.service_class > 5''')
@@ -119,7 +119,7 @@ def gather_service_class_stats(cursor, cluster):
         })
 
     for service_class in service_class_info:
-        add_metric('ServiceClass-Queued',service_class[0],service_class[1])
+        add_metric('ServiceClass-Queued', service_class[0], service_class[1])
         add_metric('ServiceClass-Executing', service_class[0], service_class[2])
 
     return metrics
@@ -178,98 +178,35 @@ def gather_table_stats(cursor, cluster):
         avg_skew_sort_ratio = 0
 
     # build up the metrics to put in cloudwatch
-    return [
-        {
-            'MetricName': 'TablesNotCompressed',
+    metrics = []
+
+    def add_metric(metric_name, value, unit):
+        metrics.append({
+            'MetricName': metric_name,
             'Dimensions': [
                 {'Name': 'ClusterIdentifier', 'Value': cluster}
             ],
             'Timestamp': datetime.datetime.utcnow(),
-            'Value': tables_not_compressed,
-            'Unit': 'Count'
-        },
-        {
-            'MetricName': 'MaxSkewRatio',
-            'Dimensions': [
-                {'Name': 'ClusterIdentifier', 'Value': cluster}
-            ],
-            'Timestamp': datetime.datetime.utcnow(),
-            'Value': max_skew_ratio,
-            'Unit': 'None'
-        },
-        {
-            'MetricName': 'AvgSkewRatio',
-            'Dimensions': [
-                {'Name': 'ClusterIdentifier', 'Value': cluster}
-            ],
-            'Timestamp': datetime.datetime.utcnow(),
-            'Value': avg_skew_ratio,
-            'Unit': 'None'
-        },
-        {
-            'MetricName': 'Tables',
-            'Dimensions': [
-                {'Name': 'ClusterIdentifier', 'Value': cluster}
-            ],
-            'Timestamp': datetime.datetime.utcnow(),
-            'Value': number_tables,
-            'Unit': 'Count'
-        },
-        {
-            'MetricName': 'MaxSkewSortRatio',
-            'Dimensions': [
-                {'Name': 'ClusterIdentifier', 'Value': cluster}
-            ],
-            'Timestamp': datetime.datetime.utcnow(),
-            'Value': max_skew_sort_ratio,
-            'Unit': 'None'
-        },
-        {
-            'MetricName': 'AvgSkewSortRatio',
-            'Dimensions': [
-                {'Name': 'ClusterIdentifier', 'Value': cluster}
-            ],
-            'Timestamp': datetime.datetime.utcnow(),
-            'Value': avg_skew_sort_ratio,
-            'Unit': 'None'
-        },
-        {
-            'MetricName': 'TablesStatsOff',
-            'Dimensions': [
-                {'Name': 'ClusterIdentifier', 'Value': cluster}
-            ],
-            'Timestamp': datetime.datetime.utcnow(),
-            'Value': number_tables_statsoff,
-            'Unit': 'Count'
-        },
-        {
-            'MetricName': 'MaxVarcharSize',
-            'Dimensions': [
-                {'Name': 'ClusterIdentifier', 'Value': cluster}
-            ],
-            'Timestamp': datetime.datetime.utcnow(),
-            'Value': max_varchar_size,
-            'Unit': 'None'
-        },
-        {
-            'MetricName': 'MaxUnsorted',
-            'Dimensions': [
-                {'Name': 'ClusterIdentifier', 'Value': cluster}
-            ],
-            'Timestamp': datetime.datetime.utcnow(),
-            'Value': max_unsorted_pct,
-            'Unit': 'Percent'
-        },
-        {
-            'MetricName': 'Rows',
-            'Dimensions': [
-                {'Name': 'ClusterIdentifier', 'Value': cluster}
-            ],
-            'Timestamp': datetime.datetime.utcnow(),
-            'Value': total_rows,
-            'Unit': 'Count'
-        }
-    ]
+            'Value': value,
+            'Unit': unit
+        })
+
+    units_count = 'Count'
+    units_none = 'None'
+    units_pct = 'Percent'
+
+    add_metric('TablesNotCompressed', tables_not_compressed, units_count)
+    add_metric('MaxSkewRatio', max_skew_ratio, units_none)
+    add_metric('MaxSkewSortRatio', max_skew_sort_ratio, units_none)
+    add_metric('AvgSkewRatio', avg_skew_ratio, units_none)
+    add_metric('AvgSkewSortRatio', avg_skew_sort_ratio, units_none)
+    add_metric('Tables', number_tables, units_count)
+    add_metric('Rows', total_rows, units_count)
+    add_metric('TablesStatsOff', number_tables_statsoff, units_count)
+    add_metric('MaxVarcharSize', max_varchar_size, units_none)
+    add_metric('MaxUnsorted', max_unsorted_pct, units_pct)
+
+    return metrics
 
 
 # nasty hack for backward compatibility, to extract label values from os.environ or event
