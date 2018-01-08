@@ -149,8 +149,8 @@ Please note the labelled version in Github does not include any user queries
 
 * After a period of time, you can check your CloudWatch metrics, and create alarms. You can also create a Dashboard with all the graphs and have a view of your database as this one:
 
-![Dashboard1](https://s3-eu-west-1.amazonaws.com/amzsup/dashboard1.png)
-![Dashboard2](https://s3-eu-west-1.amazonaws.com/amzsup/dashboard2.png)
+![Dashboard1](dashboard1.png)
+![Dashboard2](dashboard2.png)
 
 # Extensions
 
