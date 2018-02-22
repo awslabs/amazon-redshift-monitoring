@@ -17,6 +17,7 @@ import base64
 import pg8000
 import datetime
 import json
+import pgpasslib
 
 #### Static Configuration
 ssl = True
@@ -250,6 +251,13 @@ def monitor_cluster(config_sources):
 
     # we may have been passed the password in the configuration, so extract it if we can
     pwd = get_config_value(['db_pwd'], config_sources)
+
+    # override the password with the contents of .pgpass or environment variables
+    pwd = None
+    try:
+        pwd = pgpasslib.getpass(host, port, database, user)
+    except pgpasslib.FileNotFound as e:
+        pass
 
     if pwd is None:
         enc_password = get_config_value(['EncryptedPassword', 'encrypted_password', 'encrypted_pwd', 'dbPassword'],
