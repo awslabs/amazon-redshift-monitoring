@@ -14,7 +14,7 @@ if [ ! -d lib/pg8000 ]; then
 	pip install pg8000 -t lib
 fi
 
-if [ ! -a lib/pgpasslib.py ]; then
+if [ ! -e lib/pgpasslib.py ]; then
        pip install pgpasslib -t lib
 fi
 
