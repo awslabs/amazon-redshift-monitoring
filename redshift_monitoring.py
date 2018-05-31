@@ -1,12 +1,12 @@
 from __future__ import print_function
 
+import os
+import sys
+
 # Copyright 2016-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
 # http://aws.amazon.com/apache2.0/
 # or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-
-import os
-import sys
 
 # add the lib directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
@@ -102,26 +102,42 @@ def run_command(cursor, statement):
 
 def gather_service_class_stats(cursor, cluster):
     metrics = []
-    poll_ts = datetime.datetime.utcnow()
-    runtime = run_command(cursor,
-                          '''SELECT /* Lambda CloudWatch Exporter */ trim(v.name) name, w.num_queued_queries, w.num_executing_queries 
-                             from stv_wlm_service_class_state w, STV_WLM_SERVICE_CLASS_CONFIG v 
-                             WHERE w.service_class = v.service_class 
-                             and w.service_class > 5''')
+    runtime = run_command(cursor,'''
+        SELECT DATE_TRUNC('hour', a.service_class_start_time) AS metrics_ts,
+               TRIM(d.name) as service_class, 
+               COUNT(a.query) AS query_count,
+               SUM(a.total_exec_time) AS sum_exec_time,
+               sum(case when a.total_queue_time > 0 then 1 else 0 end) count_queued_queries,
+               SUM(a.total_queue_time) AS sum_queue_time,        
+               count(c.is_diskbased) as count_diskbased_segments
+        FROM stl_wlm_query a 
+        JOIN stv_wlm_classification_config b ON a.service_class = b.action_service_class
+        LEFT OUTER JOIN (select query, SUM(CASE when is_diskbased = 't' then 1 else 0 end) is_diskbased 
+                         from svl_query_summary 
+                         group by query) c on a.query = c.query
+        JOIN stv_wlm_service_class_config d on a.service_class = d.service_class
+        WHERE a.service_class > 5
+          AND a.service_class_start_time > DATEADD(hour, -2, current_date)
+        GROUP BY DATE_TRUNC('hour', a.service_class_start_time),
+                 d.name
+    ''')
     service_class_info = cursor.fetchall()
 
-    def add_metric(metric_name, service_class_id, metric_value):
+    def add_metric(metric_name, service_class_id, metric_value, ts):
         metrics.append({
             'MetricName': metric_name,
             'Dimensions': [{'Name': 'ClusterIdentifier', 'Value': cluster},
                            {'Name': 'ServiceClassID', 'Value': str(service_class_id)}],
-            'Timestamp': poll_ts,
+            'Timestamp': ts,
             'Value': metric_value
         })
 
     for service_class in service_class_info:
-        add_metric('ServiceClass-Queued', service_class[0], service_class[1])
-        add_metric('ServiceClass-Executing', service_class[0], service_class[2])
+        add_metric('ServiceClass-Queued', service_class[1], service_class[4], service_class[0])
+        add_metric('ServiceClass-QueueTime', service_class[1], service_class[5], service_class[0])
+        add_metric('ServiceClass-Executed', service_class[1], service_class[2], service_class[0])
+        add_metric('ServiceClass-ExecTime', service_class[1], service_class[3], service_class[0])
+        add_metric('ServiceClass-DiskbasedQuerySegments', service_class[1], service_class[6], service_class[0])
 
     return metrics
 

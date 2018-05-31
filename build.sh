@@ -1,7 +1,6 @@
 #!/bin/bash
 
-ver=1.4
-
+ver=1.5
 
 if [ ! -d dist ]; then
 	mkdir dist
