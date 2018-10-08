@@ -303,6 +303,7 @@ def monitor_cluster(config_sources):
             print('Connecting to Redshift: %s' % host)
 
         conn = pg8000.connect(database=database, user=user, password=pwd, host=host, port=port, ssl=ssl)
+        conn.autocommit = True
     except:
         print('Redshift Connection Failed: exception %s' % sys.exc_info()[1])
         raise
