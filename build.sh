@@ -13,6 +13,10 @@ if [ ! -d lib/pg8000 ]; then
 	pip install pg8000 -t lib
 fi
 
+if [ ! -d lib/pgpasslib* ]; then
+        pip install pgpasslib -t lib
+fi
+
 # bin the old zipfile
 if [ -f dist/$ARCHIVE ]; then
 	echo "Removed existing Archive ../dist/$ARCHIVE"
