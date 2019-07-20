@@ -1,0 +1,42 @@
+[
+	{
+		"query": "SELECT /* Lambda CloudWatch Exporter */ count(1) FROM stv_blocklist WHERE tombstone<>0",
+		"name": "TombstoneCount",
+		"unit": "Count",
+		"type": "value",
+		"comment": "High tombstone blocks could cause unexpected disk full issue."
+	},
+
+	{
+		"query": "SELECT /* Lambda CloudWatch Exporter */ sum(bytes/1000000) FROM svl_query_summary WHERE query IN (SELECT query FROM stl_query WHERE user>=100 AND endtime > GETDATE() - INTERVAL '1 hour')",
+		"name": "MBDataProcessedInLastHour",
+		"unit": "Count",
+		"type": "value",
+		"comment": "An indicator that evaluates the throughput of processed data (in MB) for user queries completed within last hour. This query can be heavy that needs more than 1 minute."
+	},
+
+	{
+		"query": "SELECT /* Lambda CloudWatch Exporter */ SUM(CASE WHEN source_query IS NOT NULL THEN 1 ELSE 0 END)*100.0 / COUNT(*) FROM svl_qlog WHERE userid>=100 AND starttime > GETDATE() - INTERVAL '1 days'",
+		"name": "QueryCacheHitPercentage",
+		"unit": "Count",
+		"type": "value",
+		"comment": "The percentage value shows how many queries hit in query cache."
+	},
+
+	{
+		"query": "SELECT /* Lambda CloudWatch Exporter */ MAX(AGE(datfrozenxid)) FROM pg_database WHERE datname NOT IN ('padb_harvest','dev')",
+		"name": "MaxTransactionId",
+		"unit": "Count",
+		"type": "value",
+		"comment": "Once the transaction id increased to ~2 billion, the cluster needs resize to reset the transaction id."
+	},
+
+	{
+		"query": "SELECT /* Lambda CloudWatch Exporter */ COALESCE(SUM(usage_in_seconds),0) FROM svcs_concurrency_scaling_usage WHERE end_time > GETDATE() - INTERVAL '1 hour'",
+		"name": "ConcurrencyScalingUsage",
+		"unit": "Count",
+		"type": "value",
+		"comment": "Concurrency scaling cluster usage in seconds for last hour."
+	}
+]
+

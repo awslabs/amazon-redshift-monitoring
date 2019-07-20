@@ -47,12 +47,13 @@ Parameters:
     AllowedValues:
       - 1 hour
       - 10 minutes
+      - 5 minutes
 Resources:
   ScheduledFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: lambda_function.lambda_handler
-      Runtime: python2.7
+      Runtime: python3.6
       CodeUri:         
         Bucket: !Sub awslabs-code-${AWS::Region}
         Key: RedshiftAdvancedMonitoring/redshift-advanced-monitoring-1.5.zip
