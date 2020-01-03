@@ -11,6 +11,11 @@ Parameters:
     Description: Name of the database user to connect to
     Type: String
     AllowedPattern: .*
+  KmsKeyARN:
+    Default: arn:aws:kms:us-east-1/123456789012:key/MyKey
+    Description: KMS Key ARN used to decrypt the password
+    Type: String
+    AllowedPattern: arn:aws:kms:[a-zA-Z0-9-]+\/\d{12}:key\/.*
   EncryptedPassword:
     Default: Base64 Encoded Encrypted Password
     Description: Password encrypted with AWS KMS
@@ -97,5 +102,9 @@ Resources:
                   Effect: "Allow"
                   Action:
                     - "cloudwatch:PutMetricData"                    
-                    - "kms:Decrypt"
                   Resource: "*"
+                -
+                  Effect: "Allow"
+                  Action:                
+                    - "kms:Decrypt"
+                  Resource: !Ref KmsKeyARN

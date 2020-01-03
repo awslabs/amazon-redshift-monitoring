@@ -16,6 +16,11 @@ Parameters:
     Description: Password encrypted with AWS KMS
     Type: String
     AllowedPattern: .*
+  KmsKeyARN:
+    Default: arn:aws:kms:us-east-1/123456789012:key/MyKey
+    Description: KMS Key ARN used to decrypt the password
+    Type: String
+    AllowedPattern: arn:aws:kms:[a-zA-Z0-9-]+\/\d{12}:key\/.*
   HostName:
     Default: my-redshift-cluster.XXXXXXXXXXXX.<region>.redshift.amazonaws.com
     Description: Cluster Endpoint Address
@@ -109,6 +114,10 @@ Resources:
                 -
                   Effect: "Allow"
                   Action:
-                    - "cloudwatch:PutMetricData"                    
-                    - "kms:Decrypt"
+                    - "cloudwatch:PutMetricData"
                   Resource: "*"
+                -
+                  Effect: "Allow"
+                  Action:                
+                    - "kms:Decrypt"
+                  Resource: !Ref KmsKeyARN
