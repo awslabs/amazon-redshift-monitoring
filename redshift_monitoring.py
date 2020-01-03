@@ -264,17 +264,18 @@ def monitor_cluster(config_sources):
     if set_debug is not None:
         global debug
         debug = set_debug
-
-    # we may have been passed the password in the configuration, so extract it if we can
-    pwd = get_config_value(['db_pwd'], config_sources)
-
-    # override the password with the contents of .pgpass or environment variables
+    
     pwd = None
     try:
         pwd = pgpasslib.getpass(host, port, database, user)
     except pgpasslib.FileNotFound as e:
         pass
 
+    # check if unencrypted password exists if no pgpasslib
+    if pwd is None:
+        pwd = get_config_value(['db_pwd'], config_sources)
+
+    # check for encrypted password if the above two don't exist
     if pwd is None:
         enc_password = get_config_value(['EncryptedPassword', 'encrypted_password', 'encrypted_pwd', 'dbPassword'],
                                         config_sources)
