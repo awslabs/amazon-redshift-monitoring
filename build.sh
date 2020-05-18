@@ -1,6 +1,6 @@
 #!/bin/bash
 
-ver=1.5
+ver=1.6
 
 if [ ! -d dist ]; then
 	mkdir dist
@@ -9,13 +9,8 @@ fi
 ARCHIVE=redshift-advanced-monitoring-$ver.zip
 
 # add required dependencies
-if [ ! -d lib/pg8000 ]; then
-	pip install pg8000 -t lib
-fi
-
-if [ ! -d lib/pgpasslib* ]; then
-        pip install pgpasslib -t lib
-fi
+pip install pg8000 -t lib
+pip install pgpasslib -t lib
 
 # bin the old zipfile
 if [ -f dist/$ARCHIVE ]; then

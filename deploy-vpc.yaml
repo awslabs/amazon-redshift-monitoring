@@ -60,7 +60,7 @@ Resources:
       Runtime: python3
       CodeUri:         
         Bucket: !Sub awslabs-code-${AWS::Region}
-        Key: RedshiftAdvancedMonitoring/redshift-advanced-monitoring-1.5.zip
+        Key: RedshiftAdvancedMonitoring/redshift-advanced-monitoring-1.6.zip
       MemorySize: 192
       Timeout: 300
       Tags:
