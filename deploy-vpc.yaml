@@ -20,7 +20,7 @@ Parameters:
     Default: arn:aws:kms:us-east-1:123456789012:key/MyKey
     Description: KMS Key ARN used to decrypt the password
     Type: String
-    AllowedPattern: arn:aws:kms:[a-zA-Z0-9-]+\:\d{12}:key\/.*
+    AllowedPattern: arn:aws:kms:[a-zA-Z0-9-]+:\d{12}:key\/.*
   HostName:
     Default: my-redshift-cluster.XXXXXXXXXXXX.<region>.redshift.amazonaws.com
     Description: Cluster Endpoint Address
@@ -57,7 +57,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: lambda_function.lambda_handler
-      Runtime: python3.6
+      Runtime: python3.7
       CodeUri:         
         Bucket: !Sub awslabs-code-${AWS::Region}
         Key: RedshiftAdvancedMonitoring/redshift-advanced-monitoring-1.6.zip
