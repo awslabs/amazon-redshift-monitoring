@@ -28,6 +28,7 @@ __version__ = "1.4"
 debug = False
 pg8000.paramstyle = "qmark"
 
+__version__ = 1.7
 
 def run_external_commands(command_set_type, file_name, cursor, cluster):
     if not os.path.exists(file_name):
