@@ -13,12 +13,12 @@ Parameters:
     AllowedPattern: .*
   EncryptedPassword:
     Default: Base64 Encoded Encrypted Password
-    Description: Password encrypted with AWS KMS
+    Description: Password encrypted with AWS KMS (leave blank to use IAM authentication token)
     Type: String
     AllowedPattern: .*
   KmsKeyARN:
     Default: arn:aws:kms:us-east-1:123456789012:key/MyKey
-    Description: KMS Key ARN used to decrypt the password
+    Description: KMS Key ARN used to decrypt the password (leave blank to use IAM authentication token)
     Type: String
     AllowedPattern: arn:aws:kms:[a-zA-Z0-9-]+:\d{12}:key\/.*
   HostName:
