@@ -278,7 +278,7 @@ def monitor_cluster(config_sources):
     if pwd is None:
         enc_password = get_config_value(['EncryptedPassword', 'encrypted_password', 'encrypted_pwd', 'dbPassword'],
                                         config_sources)
-        if enc_password is not None:
+        if enc_password:
 
             # resolve the authorisation context, if there is one, and decrypt the password
             auth_context = get_config_value('kms_auth_context', config_sources)
