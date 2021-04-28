@@ -123,6 +123,7 @@ Resources:
           - "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
           - !If [UseKms, !Ref KmsDecryptPolicy, !Ref GetClusterCredentialsPolicy]
   KmsDecryptPolicy:
+    Condition: UseKms
     Type: "AWS::IAM::ManagedPolicy"
     Properties:
       PolicyDocument:
