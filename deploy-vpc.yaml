@@ -144,4 +144,6 @@ Resources:
             Effect: "Allow"
             Action:
               - "redshift:GetClusterCredentials"
-            Resource: !Sub "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterName}/${DbUser}"
+            Resource: 
+              - !Sub "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbname:${ClusterName}/${DatabaseName}"
+              - !Sub "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterName}/${DbUser}"

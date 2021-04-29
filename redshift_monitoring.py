@@ -301,7 +301,7 @@ def monitor_cluster(config_sources):
     # check for credentials using IAM database authentication
     if pwd is None:
         try:
-            cluster_credentials = redshift_client.get_cluster_credentials(DbUser=user,
+            cluster_credentials = redshift.get_cluster_credentials(DbUser=user,
                                                                           DbName=database,
                                                                           ClusterIdentifier=cluster,
                                                                           AutoCreate=False)
