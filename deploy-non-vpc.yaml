@@ -11,16 +11,16 @@ Parameters:
     Description: Name of the database user to connect to
     Type: String
     AllowedPattern: .*
-  KmsKeyARN:
-    Default: arn:aws:kms:us-east-1:123456789012:key/MyKey
-    Description: KMS Key ARN used to decrypt the password
-    Type: String
-    AllowedPattern: arn:aws:kms:[a-zA-Z0-9-]+:\d{12}:key\/.*
   EncryptedPassword:
     Default: Base64 Encoded Encrypted Password
-    Description: Password encrypted with AWS KMS
+    Description: Password encrypted with AWS KMS (leave blank to use IAM authentication token)
     Type: String
     AllowedPattern: .*
+  KmsKeyARN:
+    Default: arn:aws:kms:us-east-1:123456789012:key/MyKey
+    Description: KMS Key ARN used to decrypt the password (leave blank to use IAM authentication token)
+    Type: String
+    AllowedPattern: ^$|arn:aws:kms:[a-zA-Z0-9-]+:\d{12}:key\/.*
   HostName:
     Default: my-redshift-cluster.XXXXXXXXXXXX.<region>.redshift.amazonaws.com
     Description: Cluster Endpoint Address
@@ -44,6 +44,11 @@ Parameters:
     AllowedValues:
       - 1 hour
       - 10 minutes
+Conditions:
+  UseKms: !Not
+   - !Equals
+     - !Ref KmsKeyARN
+     - ''
 Resources:
   ScheduledFunction:
     Type: AWS::Serverless::Function
@@ -79,8 +84,6 @@ Resources:
     Properties:
         RoleName: "LambdaRedshiftMonitoringRole"
         Path: "/"
-        ManagedPolicyArns:
-            - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
         AssumeRolePolicyDocument:
           Version: "2012-10-17"
           Statement:
@@ -101,10 +104,33 @@ Resources:
                 -
                   Effect: "Allow"
                   Action:
-                    - "cloudwatch:PutMetricData"                    
+                    - "cloudwatch:PutMetricData"
                   Resource: "*"
-                -
-                  Effect: "Allow"
-                  Action:                
-                    - "kms:Decrypt"
-                  Resource: !Ref KmsKeyARN
+        ManagedPolicyArns:
+          - "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+          - !If [UseKms, !Ref KmsDecryptPolicy, !Ref GetClusterCredentialsPolicy]
+  KmsDecryptPolicy:
+    Condition: UseKms
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Action:
+              - "kms:Decrypt"
+            Resource: !Ref KmsKeyARN
+  GetClusterCredentialsPolicy:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Action:
+              - "redshift:GetClusterCredentials"
+            Resource:
+              - !Sub "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbname:${ClusterName}/${DatabaseName}"
+              - !Sub "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbuser:${ClusterName}/${DbUser}"

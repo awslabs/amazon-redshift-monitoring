@@ -250,6 +250,7 @@ def monitor_cluster(config_sources):
 
     kms = boto3.client('kms', region_name=aws_region)
     cw = boto3.client('cloudwatch', region_name=aws_region)
+    redshift = boto3.client('redshift', region_name=aws_region)
 
     if debug:
         print("Connected to AWS KMS & CloudWatch in %s" % aws_region)
@@ -259,9 +260,10 @@ def monitor_cluster(config_sources):
     port = int(get_config_value(['HostPort', 'db_port', 'dbPort'], config_sources))
     database = get_config_value(['DatabaseName', 'db_name', 'db'], config_sources)
     cluster = get_config_value(['ClusterName', 'cluster_name', 'clusterName'], config_sources)
+
     global interval
     interval = get_config_value(['AggregationInterval', 'agg_interval', 'aggregtionInterval'], config_sources)
-    
+
     pwd = None
     try:
         pwd = pgpasslib.getpass(host, port, database, user)
@@ -276,24 +278,38 @@ def monitor_cluster(config_sources):
     if pwd is None:
         enc_password = get_config_value(['EncryptedPassword', 'encrypted_password', 'encrypted_pwd', 'dbPassword'],
                                         config_sources)
-        # resolve the authorisation context, if there is one, and decrypt the password
-        auth_context = get_config_value('kms_auth_context', config_sources)
+        if enc_password:
 
-        if auth_context is not None:
-            auth_context = json.loads(auth_context)
+            # resolve the authorisation context, if there is one, and decrypt the password
+            auth_context = get_config_value('kms_auth_context', config_sources)
 
+            if auth_context is not None:
+                auth_context = json.loads(auth_context)
+
+            try:
+                if auth_context is None:
+                    pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))[
+                        'Plaintext']
+                else:
+                    pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password), EncryptionContext=auth_context)[
+                        'Plaintext']
+            except:
+                print('KMS access failed: exception %s' % sys.exc_info()[1])
+                print('Encrypted Password: %s' % enc_password)
+                print('Encryption Context %s' % auth_context)
+
+    # check for credentials using IAM database authentication
+    if pwd is None:
         try:
-            if auth_context is None:
-                pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))[
-                    'Plaintext']
-            else:
-                pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password), EncryptionContext=auth_context)[
-                    'Plaintext']
+            cluster_credentials = redshift.get_cluster_credentials(DbUser=user,
+                                                                          DbName=database,
+                                                                          ClusterIdentifier=cluster,
+                                                                          AutoCreate=False)
+            user = cluster_credentials['DbUser']
+            pwd = cluster_credentials['DbPassword']
+
         except:
-            print('KMS access failed: exception %s' % sys.exc_info()[1])
-            print('Encrypted Password: %s' % enc_password)
-            print('Encryption Context %s' % auth_context)
-            raise
+            print('GetClusterCredentials failed: exception %s' % sys.exc_info()[1])
 
     # Connect to the cluster
     try:
