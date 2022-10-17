@@ -1,2 +1,6 @@
-pg8000==1.10.5
-pgpasslib==1.1.0
+scramp~=1.4.1
+pg8000~=1.29.2
+python-dateutil~=2.8.2
+asn1crypto~=1.5.1
+six~=1.16.0
+boto3~=1.24.91

@@ -63,13 +63,6 @@
 	},
 
 	{
-		"query": "select /* Lambda CloudWatch Exporter */ count(event) from stl_connection_log where event = 'initiating session' and username != 'rdsdb' and pid not in (select pid from stl_connection_log where event = 'disconnecting session')",
-		"name": "DbConnections",
-		"unit": "Count",
-		"type": "value"
-	},
-
-	{
 		"query": "select count(*) from svv_transactions t WHERE t.lockable_object_type = 'transactionid' and pid != pg_backend_pid()",
 		"name": "OpenTransactions",
 		"unit": "Count",
@@ -79,13 +72,6 @@
 	{
 		"query": "select count(*) from svv_transactions t WHERE t.granted = 'f' and t.pid != pg_backend_pid()",
 		"name": "UngrantedLocks",
-		"unit": "Count",
-		"type": "value"
-	},
-
-	{
-		"query": "select case when count(*) > 0 then 1 else 0 end from svv_transactions where xid = (select max(xid) from stl_vacuum)",
-		"name": "VacuumRunning",
 		"unit": "Count",
 		"type": "value"
 	},
@@ -127,14 +113,5 @@
         "unit": "Count",
         "type": "value",
         "comment": "Once the transaction id increased to ~2 billion, the cluster needs resize to reset the transaction id."
-    },
-
-    {
-        "query": "SELECT /* Lambda CloudWatch Exporter */ COALESCE(SUM(usage_in_seconds),0) concurrency_scaling_usage FROM svcs_concurrency_scaling_usage WHERE end_time > GETDATE() - INTERVAL '1 hour'",
-        "name": "ConcurrencyScalingUsage",
-        "unit": "Count",
-        "type": "value",
-        "comment": "Concurrency scaling cluster usage in seconds for last hour."
     }
-
 ]

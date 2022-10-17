@@ -13,22 +13,20 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
 sys.path.append(os.path.join(os.path.dirname(__file__), "sql"))
 
 import boto3
-import base64
 import pg8000
 import datetime
 import json
-import pgpasslib
 
 #### Static Configuration
 ssl = True
 interval = '1 hour'
 ##################
 
-__version__ = "1.4"
+__version__ = "1.8"
 debug = False
 pg8000.paramstyle = "qmark"
 
-__version__ = 1.7
+__version__ = 1.8
 
 def run_external_commands(command_set_type, file_name, cursor, cluster):
     if not os.path.exists(file_name):
@@ -248,7 +246,6 @@ def monitor_cluster(config_sources):
         global debug
         debug = True
 
-    kms = boto3.client('kms', region_name=aws_region)
     cw = boto3.client('cloudwatch', region_name=aws_region)
     redshift = boto3.client('redshift', region_name=aws_region)
 
@@ -265,38 +262,6 @@ def monitor_cluster(config_sources):
     interval = get_config_value(['AggregationInterval', 'agg_interval', 'aggregtionInterval'], config_sources)
 
     pwd = None
-    try:
-        pwd = pgpasslib.getpass(host, port, database, user)
-    except pgpasslib.FileNotFound as e:
-        pass
-
-    # check if unencrypted password exists if no pgpasslib
-    if pwd is None:
-        pwd = get_config_value(['db_pwd'], config_sources)
-
-    # check for encrypted password if the above two don't exist
-    if pwd is None:
-        enc_password = get_config_value(['EncryptedPassword', 'encrypted_password', 'encrypted_pwd', 'dbPassword'],
-                                        config_sources)
-        if enc_password:
-
-            # resolve the authorisation context, if there is one, and decrypt the password
-            auth_context = get_config_value('kms_auth_context', config_sources)
-
-            if auth_context is not None:
-                auth_context = json.loads(auth_context)
-
-            try:
-                if auth_context is None:
-                    pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password))[
-                        'Plaintext']
-                else:
-                    pwd = kms.decrypt(CiphertextBlob=base64.b64decode(enc_password), EncryptionContext=auth_context)[
-                        'Plaintext']
-            except:
-                print('KMS access failed: exception %s' % sys.exc_info()[1])
-                print('Encrypted Password: %s' % enc_password)
-                print('Encryption Context %s' % auth_context)
 
     # check for credentials using IAM database authentication
     if pwd is None:
@@ -311,12 +276,13 @@ def monitor_cluster(config_sources):
         except:
             print('GetClusterCredentials failed: exception %s' % sys.exc_info()[1])
 
+
     # Connect to the cluster
     try:
         if debug:
             print('Connecting to Redshift: %s' % host)
 
-        conn = pg8000.connect(database=database, user=user, password=pwd, host=host, port=port, ssl=ssl)
+        conn = pg8000.connect(database=database, user=user, password=pwd, host=host, port=port, ssl_context=True)
         conn.autocommit = True
     except:
         print('Redshift Connection Failed: exception %s' % sys.exc_info()[1])
