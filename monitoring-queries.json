@@ -1,117 +1,86 @@
 [
-	{
-		"query": "SELECT /* Lambda CloudWatch Exporter */ count(a.attname) FROM pg_namespace n, pg_class c, pg_attribute a  WHERE n.oid = c.relnamespace AND c.oid = a.attrelid AND a.attnum > 0 AND NOT a.attisdropped and n.nspname NOT IN ('information_schema','pg_catalog','pg_toast') AND format_encoding(a.attencodingtype::integer) = 'none' AND c.relkind='r' AND a.attsortkeyord != 1",
-		"name": "ColumnsNotCompressed",
-		"unit": "Count",
-		"type": "value"
-	},
-
-	{
-		"query": "SELECT /* Lambda CloudWatch Exporter */ sum(nvl(s.num_qs,0)) FROM svv_table_info t LEFT JOIN (SELECT tbl, COUNT(distinct query) num_qs FROM stl_scan s WHERE s.userid > 1 AND starttime >= GETDATE() - INTERVAL '1 hour' GROUP BY tbl) s ON s.tbl = t.table_id WHERE t.sortkey1 IS NULL",
-		"name": "QueriesScanNoSort",
-		"unit": "Count",
-		"type": "value"
-	},
-
-	{
-		"query": "SELECT /* Lambda CloudWatch Exporter */ SUM(w.total_queue_time) / 1000000.0 FROM stl_wlm_query w WHERE w.queue_start_time >= GETDATE() - INTERVAL '1 hour' AND w.total_queue_time > 0",
-		"name": "TotalWLMQueueTime",
-		"unit": "Seconds",
-		"type": "value"
-	},
-
-	{
-		"query": "SELECT /* Lambda CloudWatch Exporter */ count(distinct query) FROM svl_query_report WHERE is_diskbased='t' AND (LABEL LIKE 'hash%%' OR LABEL LIKE 'sort%%' OR LABEL LIKE 'aggr%%') AND userid > 1 AND start_time >= GETDATE() - INTERVAL '1 hour'",
-		"name": "DiskBasedQueries",
-		"unit": "Count",
-		"type": "value"
-	},
-
-	{
-		"query": "select /* Lambda CloudWatch Exporter */ avg(datediff(ms,startqueue,startwork)) from stl_commit_stats  where startqueue >= GETDATE() - INTERVAL '1 hour'",
-		"name": "AvgCommitQueueTime",
-		"unit": "Milliseconds",
-		"type": "value"
-	},
-
-	{
-		"query": "select /* Lambda CloudWatch Exporter */ count(distinct l.query) from stl_alert_event_log as l where l.userid >1 and l.event_time >= GETDATE() - INTERVAL '1 hour'",
-		"name": "TotalAlerts",
-		"unit": "Seconds",
-		"type": "value"
-	},
-
-	{
-		"query": "select /* Lambda CloudWatch Exporter */ avg(datediff(ms, starttime, endtime)) from stl_query where starttime >= GETDATE() - INTERVAL '1 hour'",
-		"name": "AverageQueryTime",
-		"unit": "Milliseconds",
-		"type": "value"
-	},
-
-	{
-		"query": "select /* Lambda CloudWatch Exporter */ sum(packets) from stl_dist where starttime >= GETDATE() - INTERVAL '1 hour'",
-		"name": "Packets",
-		"unit": "Count",
-		"type": "value"
-	},
-
-	{
-		"query": "select /* Lambda CloudWatch Exporter */ sum(total) from (select count(query) total from stl_dist where starttime >= GETDATE() - INTERVAL '1 hour' group by query having sum(packets) > 1000000)",
-		"name": "QueriesWithHighTraffic",
-		"unit": "Count",
-		"type": "value"
-	},
-
-	{
-		"query": "select count(*) from svv_transactions t WHERE t.lockable_object_type = 'transactionid' and pid != pg_backend_pid()",
-		"name": "OpenTransactions",
-		"unit": "Count",
-		"type": "value"
-	},
-
-	{
-		"query": "select count(*) from svv_transactions t WHERE t.granted = 'f' and t.pid != pg_backend_pid()",
-		"name": "UngrantedLocks",
-		"unit": "Count",
-		"type": "value"
-	},
-
-	{
-		"query": "select case when total_query_slots > 15 then 1 else 0 end status from (select sum(num_query_tasks) total_query_slots from STV_WLM_SERVICE_CLASS_CONFIG where service_class > 5 and name != 'Short query queue')",
-		"name": "WLMQuerySlotCountWarning",
-		"unit": "None",
-		"type": "value"
-	},
-
-	{
-        "query": "SELECT /* Lambda CloudWatch Exporter */ count(1) FROM stv_blocklist WHERE tombstone<>0",
-        "name": "TombstoneCount",
-        "unit": "Count",
-        "type": "value",
-        "comment": "High tombstone blocks could cause unexpected disk full issue."
-    },
-
-    {
-        "query": "SELECT /* Lambda CloudWatch Exporter */ sum(bytes/1000000) mb_last_hour FROM svl_query_summary WHERE query IN (SELECT query FROM stl_query WHERE user>=100 AND endtime > GETDATE() - INTERVAL '1 hour')",
-        "name": "MBDataProcessedInLastHour",
-        "unit": "Count",
-        "type": "value",
-        "comment": "An indicator that evaluates the throughput of processed data (in MB) for user queries completed within last hour. This query can be heavy that needs more than 1 minute."
-    },
-
-    {
-        "query": "SELECT /* Lambda CloudWatch Exporter */ SUM(CASE WHEN source_query IS NOT NULL THEN 1 ELSE 0 END)*100.0 / COUNT(*) as cache_hit_pct FROM svl_qlog WHERE userid>=100 AND starttime > GETDATE() - INTERVAL '1 days'",
-        "name": "QueryCacheHitPercentage",
-        "unit": "Count",
-        "type": "value",
-        "comment": "The percentage value shows how many queries hit in query cache."
-    },
-
-    {
-        "query": "SELECT /* Lambda CloudWatch Exporter */ MAX(AGE(datfrozenxid)) as max_tid FROM pg_database WHERE datname NOT IN ('padb_harvest','dev')",
-        "name": "MaxTransactionId",
-        "unit": "Count",
-        "type": "value",
-        "comment": "Once the transaction id increased to ~2 billion, the cluster needs resize to reset the transaction id."
-    }
+  {
+    "query": "SELECT /* Lambda CloudWatch Exporter */ count(a.attname) FROM pg_namespace n, pg_class c, pg_attribute a  WHERE n.oid = c.relnamespace AND c.oid = a.attrelid AND a.attnum > 0 AND NOT a.attisdropped and n.nspname NOT IN ('information_schema','pg_catalog','pg_toast') AND format_encoding(a.attencodingtype::integer) = 'none' AND c.relkind='r' AND a.attsortkeyord != 1",
+    "name": "ColumnsNotCompressed",
+    "unit": "Count"
+  },
+  {
+    "query": "SELECT /* Lambda CloudWatch Exporter */ sum(nvl(s.num_qs,0)) FROM svv_table_info t LEFT JOIN (SELECT tbl, COUNT(distinct query) num_qs FROM stl_scan s WHERE s.userid > 1 AND starttime >= GETDATE() - INTERVAL '1 hour' GROUP BY tbl) s ON s.tbl = t.table_id WHERE t.sortkey1 IS NULL",
+    "name": "QueriesScanNoSort",
+    "unit": "Count"
+  },
+  {
+    "query": "SELECT /* Lambda CloudWatch Exporter */ SUM(w.total_queue_time) / 1000000.0 FROM stl_wlm_query w WHERE w.queue_start_time >= GETDATE() - INTERVAL '1 hour' AND w.total_queue_time > 0",
+    "name": "TotalWLMQueueTime",
+    "unit": "Seconds"
+  },
+  {
+    "query": "SELECT /* Lambda CloudWatch Exporter */ count(distinct query) FROM svl_query_report WHERE is_diskbased='t' AND (LABEL LIKE 'hash%%' OR LABEL LIKE 'sort%%' OR LABEL LIKE 'aggr%%') AND userid > 1 AND start_time >= GETDATE() - INTERVAL '1 hour'",
+    "name": "DiskBasedQueries",
+    "unit": "Count"
+  },
+  {
+    "query": "select /* Lambda CloudWatch Exporter */ avg(datediff(ms,startqueue,startwork)) from stl_commit_stats  where startqueue >= GETDATE() - INTERVAL '1 hour'",
+    "name": "AvgCommitQueueTime",
+    "unit": "Milliseconds"
+  },
+  {
+    "query": "select /* Lambda CloudWatch Exporter */ count(distinct l.query) from stl_alert_event_log as l where l.userid >1 and l.event_time >= GETDATE() - INTERVAL '1 hour'",
+    "name": "TotalAlerts",
+    "unit": "Seconds"
+  },
+  {
+    "query": "select /* Lambda CloudWatch Exporter */ avg(datediff(ms, starttime, endtime)) from stl_query where starttime >= GETDATE() - INTERVAL '1 hour'",
+    "name": "AverageQueryTime",
+    "unit": "Milliseconds"
+  },
+  {
+    "query": "select /* Lambda CloudWatch Exporter */ sum(packets) from stl_dist where starttime >= GETDATE() - INTERVAL '1 hour'",
+    "name": "Packets",
+    "unit": "Count"
+  },
+  {
+    "query": "select /* Lambda CloudWatch Exporter */ sum(total) from (select count(query) total from stl_dist where starttime >= GETDATE() - INTERVAL '1 hour' group by query having sum(packets) > 1000000)",
+    "name": "QueriesWithHighTraffic",
+    "unit": "Count"
+  },
+  {
+    "query": "select count(*) from svv_transactions t WHERE t.lockable_object_type = 'transactionid' and pid != pg_backend_pid()",
+    "name": "OpenTransactions",
+    "unit": "Count"
+  },
+  {
+    "query": "select count(*) from svv_transactions t WHERE t.granted = 'f' and t.pid != pg_backend_pid()",
+    "name": "UngrantedLocks",
+    "unit": "Count"
+  },
+  {
+    "query": "select case when total_query_slots > 15 then 1 else 0 end status from (select sum(num_query_tasks) total_query_slots from STV_WLM_SERVICE_CLASS_CONFIG where service_class > 5 and name != 'Short query queue')",
+    "name": "WLMQuerySlotCountWarning",
+    "unit": "None"
+  },
+  {
+    "query": "SELECT /* Lambda CloudWatch Exporter */ count(1) FROM stv_blocklist WHERE tombstone<>0",
+    "name": "TombstoneCount",
+    "unit": "Count",
+    "comment": "High tombstone blocks could cause unexpected disk full issue."
+  },
+  {
+    "query": "SELECT /* Lambda CloudWatch Exporter */ sum(bytes/1000000) mb_last_hour FROM svl_query_summary WHERE query IN (SELECT query FROM stl_query WHERE user>=100 AND endtime > GETDATE() - INTERVAL '1 hour')",
+    "name": "MBDataProcessedInLastHour",
+    "unit": "Count",
+    "comment": "An indicator that evaluates the throughput of processed data (in MB) for user queries completed within last hour. This query can be heavy that needs more than 1 minute."
+  },
+  {
+    "query": "SELECT /* Lambda CloudWatch Exporter */ SUM(CASE WHEN source_query IS NOT NULL THEN 1 ELSE 0 END)*100.0 / COUNT(*) as cache_hit_pct FROM svl_qlog WHERE userid>=100 AND starttime > GETDATE() - INTERVAL '1 days'",
+    "name": "QueryCacheHitPercentage",
+    "unit": "Count",
+    "comment": "The percentage value shows how many queries hit in query cache."
+  },
+  {
+    "query": "SELECT /* Lambda CloudWatch Exporter */ MAX(AGE(datfrozenxid)) as max_tid FROM pg_database WHERE datname NOT IN ('padb_harvest','dev')",
+    "name": "MaxTransactionId",
+    "unit": "Count",
+    "comment": "Once the transaction id increased to ~2 billion, the cluster needs resize to reset the transaction id."
+  }
 ]

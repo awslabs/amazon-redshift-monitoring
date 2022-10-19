@@ -2,22 +2,22 @@ from __future__ import print_function
 
 import os
 import sys
-
-# Copyright 2016-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
-# http://aws.amazon.com/apache2.0/
-# or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-
-# add the lib directory to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
-sys.path.append(os.path.join(os.path.dirname(__file__), "sql"))
-
 import boto3
 import pg8000
 import datetime
 import json
 
-#### Static Configuration
+# Copyright 2016-2016 Amazon.com, Inc. or its affiliates. All Rights Reserved. Licensed under the Apache License,
+# Version 2.0 (the "License"). You may not use this file except in compliance with the License. A copy of the License
+# is located at http://aws.amazon.com/apache2.0/ or in the "license" file accompanying this file. This file is
+# distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under the License.
+
+# add the lib directory to the path
+sys.path.append(os.path.join(os.path.dirname(__file__), "lib"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "sql"))
+
+# Static Configuration
 ssl = True
 interval = '1 hour'
 ##################
@@ -26,7 +26,6 @@ __version__ = "1.8"
 debug = False
 pg8000.paramstyle = "qmark"
 
-__version__ = 1.8
 
 def run_external_commands(command_set_type, file_name, cursor, cluster):
     if not os.path.exists(file_name):
@@ -45,42 +44,28 @@ def run_external_commands(command_set_type, file_name, cursor, cluster):
     output_metrics = []
 
     for command in external_commands:
-        if command['type'] == 'value':
-            cmd_type = "Query"
-        else:
-            cmd_type = "Canary"
 
-        print("Executing %s %s: %s" % (command_set_type, cmd_type, command['name']))
+        print("Executing %s: %s" % (command_set_type, command['name']))
 
         try:
             t = datetime.datetime.now()
-            interval = run_command(cursor, command['query'])
+            run_command(cursor, command['query'])
             value = cursor.fetchone()[0]
 
             if value is None:
                 value = 0
 
-            # append a cloudwatch metric for the value, or the elapsed interval, based upon the configured 'type' value
-            if command['type'] == 'value':
-                output_metrics.append({
-                    'MetricName': command['name'],
-                    'Dimensions': [
-                        {'Name': 'ClusterIdentifier', 'Value': cluster}
-                    ],
-                    'Timestamp': t,
-                    'Value': value,
-                    'Unit': command['unit']
-                })
-            else:
-                output_metrics.append({
-                    'MetricName': command['name'],
-                    'Dimensions': [
-                        {'Name': 'ClusterIdentifier', 'Value': cluster}
-                    ],
-                    'Timestamp': t,
-                    'Value': interval,
-                    'Unit': 'Milliseconds'
-                })
+            # append a cloudwatch metric for the value
+            output_metrics.append({
+                'MetricName': command['name'],
+                'Dimensions': [
+                    {'Name': 'ClusterIdentifier', 'Value': cluster}
+                ],
+                'Timestamp': t,
+                'Value': value,
+                'Unit': command['unit']
+            })
+
         except Exception as e:
             print("Exception running external command %s" % command['name'])
             print(e)
@@ -101,7 +86,7 @@ def run_command(cursor, statement):
 
 def gather_service_class_stats(cursor, cluster):
     metrics = []
-    runtime = run_command(cursor,'''
+    runtime = run_command(cursor, '''
         SELECT DATE_TRUNC('hour', a.service_class_start_time) AS metrics_ts,
                TRIM(d.name) as service_class, 
                COUNT(a.query) AS query_count,
@@ -141,9 +126,52 @@ def gather_service_class_stats(cursor, cluster):
     return metrics
 
 
+def kill_blocking_queries(cursor, cluster):
+    metrics = []
+    run_command(cursor, '''
+        with blocking as (SELECT *
+                  FROM admin.v_get_blocking_locks
+                  where pidlist is not null
+                    and (username like '%developer%' or username like '%analyst%')
+                    and mode = 'AccessShareLock'),
+        blocked as (SELECT *
+                 FROM admin.v_get_blocking_locks
+                 where granted = 'False'
+                   and username like '%etl%'
+                   and mode = 'AccessExclusiveLock')
+
+        select
+            blocking.pid as pid,
+            blocking.username,
+            blocking.schemaname || '.' || blocking.objectname as tablename,
+            blocked.waiting as blocking_for
+        from blocking
+                 inner join blocked
+                            on blocking.pidlist like '%' || blocked.pid || '%';        
+    ''')
+    blocking_queries = cursor.fetchall()
+
+    metrics.append({
+        'MetricName': 'BlockingQueriesKilled',
+        'Dimensions': [{'Name': 'ClusterIdentifier', 'Value': cluster}],
+        'Timestamp':  datetime.datetime.utcnow(),
+        'Value': len(blocking_queries)
+    })
+
+    for blocking_query in blocking_queries:
+        print("[WARNING] Lock detected: Query with pid %s from user '%s' is locking '%s' for %s seconds " %
+              (blocking_query[0], blocking_query[1], blocking_query[2], blocking_query[3]))
+
+        cursor.execute(f"select pg_terminate_backend({blocking_query[0]})")
+        print("[WARNING] Killed blocking query with pid %s" % blocking_query[0])
+
+    return metrics
+
+
 def gather_table_stats(cursor, cluster):
     run_command(cursor,
-                "select /* Lambda CloudWatch Exporter */ \"schema\" || '.' || \"table\" as table, encoded, max_varchar, unsorted, stats_off, tbl_rows, skew_sortkey1, skew_rows from svv_table_info")
+                "select /* Lambda CloudWatch Exporter */ \"schema\" || '.' || \"table\" as table, encoded, "
+                "max_varchar, unsorted, stats_off, tbl_rows, skew_sortkey1, skew_rows from svv_table_info")
     tables_not_compressed = 0
     max_skew_ratio = 0
     total_skew_ratio = 0
@@ -242,7 +270,7 @@ def monitor_cluster(config_sources):
     aws_region = get_config_value(['AWS_REGION'], config_sources)
 
     set_debug = get_config_value(['DEBUG', 'debug', ], config_sources)
-    if set_debug is not None and ((isinstance(set_debug,bool) and set_debug) or set_debug.upper() == 'TRUE'):
+    if set_debug is not None and ((isinstance(set_debug, bool) and set_debug) or set_debug.upper() == 'TRUE'):
         global debug
         debug = True
 
@@ -267,22 +295,21 @@ def monitor_cluster(config_sources):
     if pwd is None:
         try:
             cluster_credentials = redshift.get_cluster_credentials(DbUser=user,
-                                                                          DbName=database,
-                                                                          ClusterIdentifier=cluster,
-                                                                          AutoCreate=False)
+                                                                   DbName=database,
+                                                                   ClusterIdentifier=cluster,
+                                                                   AutoCreate=False)
             user = cluster_credentials['DbUser']
             pwd = cluster_credentials['DbPassword']
 
         except:
             print('GetClusterCredentials failed: exception %s' % sys.exc_info()[1])
 
-
     # Connect to the cluster
     try:
         if debug:
             print('Connecting to Redshift: %s' % host)
 
-        conn = pg8000.connect(database=database, user=user, password=pwd, host=host, port=port, ssl_context=True)
+        conn = pg8000.connect(database=database, user=user, password=pwd, host=host, port=port, ssl_context=ssl)
         conn.autocommit = True
     except:
         print('Redshift Connection Failed: exception %s' % sys.exc_info()[1])
@@ -295,7 +322,7 @@ def monitor_cluster(config_sources):
     cursor = conn.cursor()
 
     # set application name
-    set_name = "set application_name to 'RedshiftAdvancedMonitoring-v%s'" % __version__
+    set_name = "set application_name to 'Redshift-Monitoring-and-Administration-Daemon-v%s'" % __version__
 
     if debug:
         print(set_name)
@@ -311,8 +338,8 @@ def monitor_cluster(config_sources):
     # run the externally configured commands and append their values onto the put metrics
     put_metrics.extend(run_external_commands('Redshift Diagnostic', 'monitoring-queries.json', cursor, cluster))
 
-    # run the supplied user commands and append their values onto the put metrics
-    put_metrics.extend(run_external_commands('User Configured', 'user-queries.json', cursor, cluster))
+    # Run the search & kill for blocking queries
+    put_metrics.extend(kill_blocking_queries(cursor, cluster))
 
     # add a metric for how many metrics we're exporting (whoa inception)
     put_metrics.extend([{

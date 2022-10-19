@@ -1,8 +1,0 @@
-[
-	{
-		"query": "select count(9) from sensor_data",
-		"name":"SensorDataCanary",
-		"unit":"Count",
-		"type":"interval"
-	}
-]
