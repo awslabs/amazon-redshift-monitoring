@@ -9,3 +9,4 @@ six.pyc
 .pydevproject
 
 *.pyc
+.DS_Store

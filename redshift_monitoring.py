@@ -14,7 +14,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "sql"))
 
 import boto3
 import base64
-import pg8000
+import pg8000.native
 import datetime
 import json
 import pgpasslib
@@ -24,13 +24,13 @@ ssl = True
 interval = '1 hour'
 ##################
 
-__version__ = "1.4"
+__version__ = "1.8"
 debug = False
 pg8000.paramstyle = "qmark"
+NAME = "Lambda CloudWatch Exporter"
 
-__version__ = 1.7
 
-def run_external_commands(command_set_type, file_name, cursor, cluster):
+def run_external_commands(command_set_type, file_name, conn, cluster):
     if not os.path.exists(file_name):
         return []
 
@@ -56,11 +56,10 @@ def run_external_commands(command_set_type, file_name, cursor, cluster):
 
         try:
             t = datetime.datetime.now()
-            interval = run_command(cursor, command['query'])
-            value = cursor.fetchone()[0]
+            interval, result = run_command(conn, command['query'])
 
-            if value is None:
-                value = 0
+            for row in result:
+                value, *_ = row
 
             # append a cloudwatch metric for the value, or the elapsed interval, based upon the configured 'type' value
             if command['type'] == 'value':
@@ -70,7 +69,7 @@ def run_external_commands(command_set_type, file_name, cursor, cluster):
                         {'Name': 'ClusterIdentifier', 'Value': cluster}
                     ],
                     'Timestamp': t,
-                    'Value': value,
+                    'Value': 0 if value is None else value,
                     'Unit': command['unit']
                 })
             else:
@@ -90,20 +89,20 @@ def run_external_commands(command_set_type, file_name, cursor, cluster):
     return output_metrics
 
 
-def run_command(cursor, statement):
+def run_command(conn, statement) -> tuple:
     if debug:
         print("Running Statement: %s" % statement)
 
     t = datetime.datetime.now()
-    cursor.execute(statement)
+    output = conn.run(statement)
     interval = (datetime.datetime.now() - t).microseconds / 1000
 
-    return interval
+    return interval, output
 
 
-def gather_service_class_stats(cursor, cluster):
+def gather_service_class_stats(conn, cluster):
     metrics = []
-    runtime = run_command(cursor,'''
+    runtime, service_class_info = run_command(conn, '''
         SELECT DATE_TRUNC('hour', a.service_class_start_time) AS metrics_ts,
                TRIM(d.name) as service_class, 
                COUNT(a.query) AS query_count,
@@ -122,7 +121,6 @@ def gather_service_class_stats(cursor, cluster):
         GROUP BY DATE_TRUNC('hour', a.service_class_start_time),
                  d.name
     ''')
-    service_class_info = cursor.fetchall()
 
     def add_metric(metric_name, service_class_id, metric_value, ts):
         metrics.append({
@@ -143,9 +141,9 @@ def gather_service_class_stats(cursor, cluster):
     return metrics
 
 
-def gather_table_stats(cursor, cluster):
-    run_command(cursor,
-                "select /* Lambda CloudWatch Exporter */ \"schema\" || '.' || \"table\" as table, encoded, max_varchar, unsorted, stats_off, tbl_rows, skew_sortkey1, skew_rows from svv_table_info")
+def gather_table_stats(conn, cluster):
+    interval, result = run_command(conn,
+                                   f"select /* {NAME} */ \"schema\" || '.' || \"table\" as table, encoded, max_varchar, unsorted, stats_off, tbl_rows, skew_sortkey1, skew_rows from svv_table_info")
     tables_not_compressed = 0
     max_skew_ratio = 0
     total_skew_ratio = 0
@@ -159,10 +157,8 @@ def gather_table_stats(cursor, cluster):
     max_unsorted_pct = 0
     total_rows = 0
 
-    result = cursor.fetchall()
-
     for table in result:
-        table_name, encoded, max_varchar, unsorted, stats_off, tbl_rows, skew_sortkey1, skew_rows = table
+        table_name, encoded, max_varchar, unsorted, stats_off, tbl_rows, skew_sortkey1, skew_rows, *_ = table
         number_tables += 1
         if encoded == 'N':
             tables_not_compressed += 1
@@ -244,7 +240,7 @@ def monitor_cluster(config_sources):
     aws_region = get_config_value(['AWS_REGION'], config_sources)
 
     set_debug = get_config_value(['DEBUG', 'debug', ], config_sources)
-    if set_debug is not None and ((isinstance(set_debug,bool) and set_debug) or set_debug.upper() == 'TRUE'):
+    if set_debug is not None and ((isinstance(set_debug, bool) and set_debug) or set_debug.upper() == 'TRUE'):
         global debug
         debug = True
 
@@ -302,9 +298,9 @@ def monitor_cluster(config_sources):
     if pwd is None:
         try:
             cluster_credentials = redshift.get_cluster_credentials(DbUser=user,
-                                                                          DbName=database,
-                                                                          ClusterIdentifier=cluster,
-                                                                          AutoCreate=False)
+                                                                   DbName=database,
+                                                                   ClusterIdentifier=cluster,
+                                                                   AutoCreate=False)
             user = cluster_credentials['DbUser']
             pwd = cluster_credentials['DbPassword']
 
@@ -316,7 +312,8 @@ def monitor_cluster(config_sources):
         if debug:
             print('Connecting to Redshift: %s' % host)
 
-        conn = pg8000.connect(database=database, user=user, password=pwd, host=host, port=port, ssl=ssl)
+        conn = pg8000.native.Connection(user, host=host, database=database, port=port, password=pwd, ssl_context=True,
+                                        tcp_keepalive=True, application_name=NAME)
         conn.autocommit = True
     except:
         print('Redshift Connection Failed: exception %s' % sys.exc_info()[1])
@@ -325,28 +322,25 @@ def monitor_cluster(config_sources):
     if debug:
         print('Successfully Connected to Cluster')
 
-    # create a new cursor for methods to run through
-    cursor = conn.cursor()
-
     # set application name
-    set_name = "set application_name to 'RedshiftAdvancedMonitoring-v%s'" % __version__
+    set_name = f"set application_name to '{NAME}-v{__version__}'"
 
     if debug:
         print(set_name)
 
-    cursor.execute(set_name)
+    run_command(conn, set_name)
 
     # collect table statistics
-    put_metrics = gather_table_stats(cursor, cluster)
+    put_metrics = gather_table_stats(conn, cluster)
 
     # collect service class statistics
-    put_metrics.extend(gather_service_class_stats(cursor, cluster))
+    put_metrics.extend(gather_service_class_stats(conn, cluster))
 
     # run the externally configured commands and append their values onto the put metrics
-    put_metrics.extend(run_external_commands('Redshift Diagnostic', 'monitoring-queries.json', cursor, cluster))
+    put_metrics.extend(run_external_commands('Redshift Diagnostic', 'monitoring-queries.json', conn, cluster))
 
     # run the supplied user commands and append their values onto the put metrics
-    put_metrics.extend(run_external_commands('User Configured', 'user-queries.json', cursor, cluster))
+    put_metrics.extend(run_external_commands('User Configured', 'user-queries.json', conn, cluster))
 
     # add a metric for how many metrics we're exporting (whoa inception)
     put_metrics.extend([{
@@ -381,5 +375,4 @@ def monitor_cluster(config_sources):
             print('Pushing metrics to CloudWatch failed: exception %s' % sys.exc_info()[1])
             raise
 
-    cursor.close()
     conn.close()
